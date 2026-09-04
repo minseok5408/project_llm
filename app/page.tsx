@@ -390,10 +390,6 @@ export default function Home() {
           <div className="flex h-11 items-center border-b border-border/70 px-3 sm:px-4">
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
               <span className="text-primary">$</span> Project LLM
-              <span className="text-muted-foreground">
-                {' '}
-                — zsh — ~/project_llm
-              </span>
             </h1>
             <Button
               type="button"
@@ -431,9 +427,6 @@ export default function Home() {
             </span>
             <span>문맥: 32,768 토큰</span>
             <span>작업: 1/1</span>
-            <span className="ml-auto hidden text-border sm:inline">
-              tty:qwen.0
-            </span>
           </div>
         </header>
 
@@ -450,7 +443,7 @@ export default function Home() {
                       <span className="text-primary">Project LLM</span>{' '}
                       <span className="text-foreground">0.1.0</span>
                     </p>
-                    <p>로컬 추론 터미널 / Apple Silicon arm64</p>
+                    <p>Apple Silicon에서 실행되는 로컬 LLM 채팅</p>
                     <p className="mt-4">
                       <span className="text-primary">[정상]</span> FastAPI 연결
                       완료
@@ -660,10 +653,8 @@ export default function Home() {
         className="hidden min-h-0 flex-col overflow-y-auto bg-card lg:flex"
         aria-label="런타임 설정"
       >
-        <div className="flex h-11 shrink-0 items-center border-b border-border px-4 text-sm">
-          <span className="text-primary">$</span>
-          <span className="ml-2 text-foreground">실행 상태</span>
-          <span className="ml-auto text-xs text-muted-foreground">10초</span>
+        <div className="flex h-11 shrink-0 items-center border-b border-border px-4 text-sm text-foreground">
+          런타임 설정
         </div>
 
         <section className="border-b border-border">
@@ -786,23 +777,6 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-auto border-t border-border bg-background">
-          <h2 className="border-b border-border/70 px-4 py-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            세션 기록
-          </h2>
-          <div className="space-y-1 px-4 py-4 text-xs leading-5 text-muted-foreground">
-            <p>
-              <span className="text-primary">[정상]</span> API 경계 분리됨
-            </p>
-            <p>
-              <span className="text-primary">[정상]</span> 로컬 추론 활성화됨
-            </p>
-            <p>
-              <span className="text-amber-300">[!]</span> 대화 기록: 메모리에만
-              보관
-            </p>
-          </div>
-        </section>
       </aside>
     </main>
   );

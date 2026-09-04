@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Project LLM',
-  description: 'Apple Silicon에서 실행하는 터미널형 로컬 Qwen 채팅 환경',
+  description: 'Apple Silicon에서 실행되는 로컬 LLM 채팅',
 };
 
 export default function RootLayout({

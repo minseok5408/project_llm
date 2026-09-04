@@ -12,14 +12,12 @@ project_llm/
 ├── lib/                       # 프런트엔드 공용 유틸리티
 ├── public/                    # favicon 등 정적 파일
 ├── scripts/                   # 로컬 개발 환경 통합 실행 스크립트
-├── .openai/                   # Sites와 Cloudflare 빌드 설정
 ├── .idea/                     # PyCharm 프로젝트 설정
 ├── .venv/                     # [생성] Python 3.12 가상환경
 ├── node_modules/              # [생성] npm 패키지
 ├── dist/                      # [생성] 프로덕션 웹 빌드 결과
 ├── .next/                     # [생성] Next 호환 타입·빌드 데이터
 ├── .vinext/                   # [생성] Vinext 개발 데이터
-├── .wrangler/                 # [생성] Wrangler 로컬 실행 데이터
 ├── .pytest_cache/             # [생성] pytest 캐시
 ├── .ruff_cache/               # [생성] Ruff 캐시
 ├── qwen_workbench.egg-info/   # [생성] Python editable 설치 메타데이터
@@ -31,7 +29,7 @@ project_llm/
 ├── package.json               # 프런트엔드 패키지와 npm 명령
 ├── package-lock.json          # npm 의존성 잠금 파일
 ├── .env.example               # 로컬 환경 변수 예시
-├── vite.config.ts             # Vinext/Vite/Cloudflare 구성
+├── vite.config.ts             # 로컬 Vinext/Vite 구성
 └── tsconfig.json              # TypeScript 설정
 ```
 
@@ -57,7 +55,6 @@ mlx-community/Qwen3.8-27B-4bit
 - `lib/`: 클래스 이름 결합 등 프런트엔드 공용 함수를 둡니다.
 - `public/`: 브라우저가 그대로 제공하는 favicon과 정적 자산을 둡니다.
 - `scripts/`: 모델 서버, FastAPI, 웹 화면을 함께 시작하고 종료하는 `dev.py`가 있습니다.
-- `.openai/`: Sites/Vinext의 로컬 및 배포 빌드 정보를 보관합니다.
 - `.idea/`: 프로젝트 인터프리터와 TypeScript 경로 등 PyCharm 설정을 보관합니다.
 
 ## 백엔드 주요 파일

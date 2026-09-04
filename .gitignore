@@ -80,7 +80,7 @@ __pycache__/
 !.yarn/releases
 !.yarn/versions
 
-# Vinext, Vite, Cloudflare, and deployment output
+# Vinext, Vite, and local build output
 /.next/
 /.vinext/
 /.vite/
@@ -88,7 +88,6 @@ __pycache__/
 /.output/
 /out/
 /dist/
-/.wrangler/
 /.vercel/
 /outputs/
 /work/
@@ -121,6 +120,5 @@ yarn-error.log*
 ._*
 Thumbs.db
 
-# Keep repository-safe templates and Sites configuration tracked:
+# Keep the repository-safe environment template tracked:
 #   .env.example
-#   .openai/hosting.json
