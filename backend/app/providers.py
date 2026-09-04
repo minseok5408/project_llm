@@ -41,7 +41,7 @@ class MockProvider:
             backend="mock",
             ready=True,
             model=self.settings.llm_model_id,
-            detail="Mock provider · 모델 다운로드 없이 실행 중",
+            detail="테스트용 추론 엔진 · 모델 다운로드 없이 실행 중",
         )
 
     async def stream(
@@ -87,7 +87,7 @@ class MlxServerProvider:
                 ready=True,
                 model=self.settings.llm_model_id,
                 detail=(
-                    f"MLX-VLM · {self.settings.llm_context_window // 1024}K context · "
+                    f"MLX-VLM · {self.settings.llm_context_window // 1024}K 문맥 · "
                     f"동시 생성 {self.settings.llm_max_concurrent_generations}건"
                 ),
             )

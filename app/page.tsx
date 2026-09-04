@@ -52,6 +52,24 @@ const suggestions = [
   'Python 비동기 코드를 쉽게 설명해줘',
 ];
 
+const gatewayLabels: Record<RuntimeStatus['gateway'], string> = {
+  checking: '확인 중',
+  online: '연결됨',
+  offline: '연결 끊김',
+};
+
+const providerLabels: Record<RuntimeStatus['provider'], string> = {
+  ready: '준비됨',
+  starting: '시작 중',
+  offline: '연결 끊김',
+};
+
+const backendLabels: Record<RuntimeStatus['backend'], string> = {
+  mlx: 'MLX',
+  mock: '테스트용',
+  unknown: '알 수 없음',
+};
+
 function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
@@ -311,9 +329,9 @@ export default function Home() {
       const registration = context.registerTool(
         {
           name: 'send_chat_message',
-          title: 'Send chat message',
+          title: '채팅 메시지 보내기',
           description:
-            'Send one text message through the visible Qwen Workbench conversation and wait for the streamed response.',
+            '화면에 열린 Qwen Workbench 대화로 메시지 하나를 보내고 실시간 응답을 기다립니다.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -321,7 +339,7 @@ export default function Home() {
                 type: 'string',
                 minLength: 1,
                 maxLength: 100000,
-                description: 'The user message to send.',
+                description: '보낼 사용자 메시지입니다.',
               },
             },
             required: ['message'],
@@ -334,15 +352,15 @@ export default function Home() {
                 ? (input as { message?: unknown }).message
                 : undefined;
             if (typeof message !== 'string' || !message.trim()) {
-              throw new Error('message must be a non-empty string');
+              throw new Error('메시지에는 한 글자 이상 입력해야 합니다.');
             }
             if (message.length > 100000) {
-              throw new Error('message must be 100000 characters or fewer');
+              throw new Error('메시지는 100,000자 이하여야 합니다.');
             }
 
             const accepted = await sendMessageRef.current(message);
             if (!accepted)
-              throw new Error('the chat is busy or the message is empty');
+              throw new Error('응답 생성 중이거나 메시지가 비어 있습니다.');
             return { status: 'sent' };
           },
         },
@@ -370,11 +388,6 @@ export default function Home() {
       <section className="flex min-w-0 flex-col overflow-hidden border-border lg:border-r">
         <header className="shrink-0 border-b border-border bg-card">
           <div className="flex h-11 items-center border-b border-border/70 px-3 sm:px-4">
-            <div className="mr-3 flex items-center gap-1.5" aria-hidden="true">
-              <span className="size-2.5 border border-rose-400/70 bg-rose-400/30" />
-              <span className="size-2.5 border border-amber-300/70 bg-amber-300/30" />
-              <span className="size-2.5 border border-primary/70 bg-primary/30" />
-            </div>
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
               <span className="text-primary">$</span> qwen-workbench
               <span className="text-muted-foreground">
@@ -390,7 +403,7 @@ export default function Home() {
               disabled={!messages.length}
               className="h-7 rounded-none border border-transparent px-2 text-xs text-muted-foreground hover:border-border hover:bg-muted hover:text-primary"
             >
-              :clear
+              대화 지우기
             </Button>
           </div>
           <div
@@ -399,10 +412,10 @@ export default function Home() {
           >
             <span className="flex items-center gap-2">
               <ConnectionDot status={runtime.provider} />
-              provider://{runtime.backend}
+              추론 엔진: {backendLabels[runtime.backend]}
             </span>
             <span>
-              gateway=
+              API:{' '}
               <strong
                 className={cn(
                   'font-normal',
@@ -413,11 +426,11 @@ export default function Home() {
                       : 'text-rose-300',
                 )}
               >
-                {runtime.gateway}
+                {gatewayLabels[runtime.gateway]}
               </strong>
             </span>
-            <span>context=32768</span>
-            <span>slot=1/1</span>
+            <span>문맥: 32,768 토큰</span>
+            <span>작업: 1/1</span>
             <span className="ml-auto hidden text-border sm:inline">
               tty:qwen.0
             </span>
@@ -437,10 +450,10 @@ export default function Home() {
                       <span className="text-primary">qwen-workbench</span>{' '}
                       <span className="text-foreground">0.1.0</span>
                     </p>
-                    <p>local inference terminal / Apple Silicon arm64</p>
+                    <p>로컬 추론 터미널 / Apple Silicon arm64</p>
                     <p className="mt-4">
-                      <span className="text-primary">[ ok ]</span> FastAPI
-                      gateway handshake
+                      <span className="text-primary">[정상]</span> FastAPI 연결
+                      완료
                     </p>
                     <p>
                       <span
@@ -453,16 +466,16 @@ export default function Home() {
                         )}
                       >
                         {runtime.provider === 'ready'
-                          ? '[ ok ]'
+                          ? '[정상]'
                           : runtime.provider === 'offline'
-                            ? '[fail]'
-                            : '[wait]'}
+                            ? '[실패]'
+                            : '[대기]'}
                       </span>{' '}
                       {runtime.detail}
                     </p>
                     <p>
-                      <span className="text-primary">[ ok ]</span> model context
-                      allocated: 32768 tokens
+                      <span className="text-primary">[정상]</span> 모델 문맥
+                      할당: 32,768 토큰
                     </p>
                   </div>
 
@@ -541,7 +554,7 @@ export default function Home() {
                         </span>
                         {streaming && (
                           <span className="ml-auto text-amber-300">
-                            [streaming]
+                            [생성 중]
                           </span>
                         )}
                       </div>
@@ -573,7 +586,7 @@ export default function Home() {
                 role="alert"
                 className="mb-3 border border-rose-400/40 bg-rose-400/[0.06] px-3 py-2 text-sm leading-6 text-rose-200"
               >
-                <span className="mr-2 text-rose-400">stderr:</span>
+                <span className="mr-2 text-rose-400">오류:</span>
                 {error}
               </div>
             )}
@@ -619,7 +632,7 @@ export default function Home() {
                     aria-label="응답 생성 중지"
                     className="m-2 h-9 rounded-none border-rose-400/50 bg-rose-400/[0.06] px-3 text-xs text-rose-200 hover:bg-rose-400/10 hover:text-rose-100"
                   >
-                    SIGINT ^C
+                    생성 중지 ^C
                   </Button>
                 ) : (
                   <Button
@@ -628,16 +641,16 @@ export default function Home() {
                     aria-label="메시지 전송"
                     className="m-2 h-9 rounded-none border border-primary bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/85"
                   >
-                    EXEC ↵
+                    전송 ↵
                   </Button>
                 )}
               </div>
             </form>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>
-                Enter: run · Shift+Enter: newline · 응답은 로컬에서 생성됨
+                Enter: 전송 · Shift+Enter: 줄바꿈 · 응답은 로컬에서 생성됨
               </span>
-              <span>verify critical output manually</span>
+              <span>중요한 출력은 직접 확인하세요</span>
             </div>
           </div>
         </footer>
@@ -649,17 +662,17 @@ export default function Home() {
       >
         <div className="flex h-11 shrink-0 items-center border-b border-border px-4 text-sm">
           <span className="text-primary">$</span>
-          <span className="ml-2 text-foreground">watch runtime</span>
-          <span className="ml-auto text-xs text-muted-foreground">10s</span>
+          <span className="ml-2 text-foreground">실행 상태</span>
+          <span className="ml-auto text-xs text-muted-foreground">10초</span>
         </div>
 
         <section className="border-b border-border">
           <h2 className="border-b border-border/70 bg-muted/30 px-4 py-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            01 / runtime.status
+            01 / 실행 상태
           </h2>
           <dl className="space-y-2 px-4 py-4 text-sm">
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">gateway</dt>
+              <dt className="text-muted-foreground">API</dt>
               <dd
                 className={cn(
                   runtime.gateway === 'online'
@@ -669,11 +682,11 @@ export default function Home() {
                       : 'text-rose-300',
                 )}
               >
-                {runtime.gateway}
+                {gatewayLabels[runtime.gateway]}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">provider</dt>
+              <dt className="text-muted-foreground">추론 엔진</dt>
               <dd
                 className={cn(
                   runtime.provider === 'ready'
@@ -683,15 +696,17 @@ export default function Home() {
                       : 'text-rose-300',
                 )}
               >
-                {runtime.provider}
+                {providerLabels[runtime.provider]}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">backend</dt>
-              <dd className="text-foreground">{runtime.backend}</dd>
+              <dt className="text-muted-foreground">백엔드</dt>
+              <dd className="text-foreground">
+                {backendLabels[runtime.backend]}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">generation.slot</dt>
+              <dt className="text-muted-foreground">생성 슬롯</dt>
               <dd className="text-foreground">1</dd>
             </div>
           </dl>
@@ -702,22 +717,22 @@ export default function Home() {
 
         <section className="border-b border-border">
           <h2 className="border-b border-border/70 bg-muted/30 px-4 py-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            02 / model.info
+            02 / 모델 정보
           </h2>
           <dl className="space-y-3 px-4 py-4 text-sm">
             <div>
-              <dt className="mb-1 text-muted-foreground">model_id</dt>
+              <dt className="mb-1 text-muted-foreground">모델 ID</dt>
               <dd className="break-all leading-5 text-foreground">
                 {runtime.model}
               </dd>
             </div>
             <div className="grid grid-cols-2 gap-3 border-t border-border/70 pt-3">
               <div>
-                <dt className="text-muted-foreground">quant</dt>
-                <dd className="mt-1 text-primary">mlx / 4-bit</dd>
+                <dt className="text-muted-foreground">양자화</dt>
+                <dd className="mt-1 text-primary">MLX / 4비트</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">context</dt>
+                <dt className="text-muted-foreground">문맥 길이</dt>
                 <dd className="mt-1 text-primary">32,768</dd>
               </div>
             </div>
@@ -726,14 +741,14 @@ export default function Home() {
 
         <section className="border-b border-border">
           <h2 className="border-b border-border/70 bg-muted/30 px-4 py-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            03 / generation.conf
+            03 / 생성 설정
           </h2>
           <div className="px-4 py-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm text-foreground">thinking</p>
+                <p className="text-sm text-foreground">깊이 생각하기</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  extended reasoning
+                  복잡한 문제를 더 깊게 추론
                 </p>
               </div>
               <Switch
@@ -745,7 +760,7 @@ export default function Home() {
             </div>
             <div className="mt-5 border-t border-border/70 pt-4">
               <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="text-foreground">max_tokens</span>
+                <span className="text-foreground">최대 토큰 수</span>
                 <span className="text-primary">
                   {maxTokens.toLocaleString()}
                 </span>
@@ -773,17 +788,18 @@ export default function Home() {
 
         <section className="mt-auto border-t border-border bg-background">
           <h2 className="border-b border-border/70 px-4 py-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            session.log
+            세션 기록
           </h2>
           <div className="space-y-1 px-4 py-4 text-xs leading-5 text-muted-foreground">
             <p>
-              <span className="text-primary">[ok]</span> api boundary isolated
+              <span className="text-primary">[정상]</span> API 경계 분리됨
             </p>
             <p>
-              <span className="text-primary">[ok]</span> local inference enabled
+              <span className="text-primary">[정상]</span> 로컬 추론 활성화됨
             </p>
             <p>
-              <span className="text-amber-300">[!]</span> history: memory only
+              <span className="text-amber-300">[!]</span> 대화 기록: 메모리에만
+              보관
             </p>
           </div>
         </section>
