@@ -331,7 +331,7 @@ export default function Home() {
           name: 'send_chat_message',
           title: '채팅 메시지 보내기',
           description:
-            '화면에 열린 Qwen Workbench 대화로 메시지 하나를 보내고 실시간 응답을 기다립니다.',
+            '화면에 열린 Project LLM 대화로 메시지 하나를 보내고 실시간 응답을 기다립니다.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -389,7 +389,7 @@ export default function Home() {
         <header className="shrink-0 border-b border-border bg-card">
           <div className="flex h-11 items-center border-b border-border/70 px-3 sm:px-4">
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-              <span className="text-primary">$</span> qwen-workbench
+              <span className="text-primary">$</span> Project LLM
               <span className="text-muted-foreground">
                 {' '}
                 — zsh — ~/project_llm
@@ -447,7 +447,7 @@ export default function Home() {
                 <div className="max-w-3xl">
                   <div className="mb-7 text-sm leading-7 text-muted-foreground">
                     <p>
-                      <span className="text-primary">qwen-workbench</span>{' '}
+                      <span className="text-primary">Project LLM</span>{' '}
                       <span className="text-foreground">0.1.0</span>
                     </p>
                     <p>로컬 추론 터미널 / Apple Silicon arm64</p>
