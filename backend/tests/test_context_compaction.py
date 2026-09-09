@@ -7,11 +7,11 @@ from collections.abc import Callable
 import pytest
 
 from backend.app.config import Settings
-from backend.app.providers import ProviderUnavailable
+from backend.app.context.builder import ContextTurn
+from backend.app.context.compaction import count_context, plan_tail, summary_batch
+from backend.app.llm.protocol import ProviderUnavailable
 from backend.app.repositories import InvalidInput
 from backend.app.schemas import ChatMessage, GenerationOptions
-from backend.app.services.context_compaction import count_context, plan_tail, summary_batch
-from backend.app.services.conversation_context import ContextTurn
 
 
 class CountingProvider:
@@ -194,3 +194,23 @@ async def test_summary_batch_cannot_run_without_any_old_turn() -> None:
     with pytest.raises(InvalidInput, match="요약할"):
         await summary_batch(provider, settings(), "이전 요약", [])
     assert provider.calls == []
+
+
+async def test_summary_records_preserve_short_cancelled_reply_and_fact_correction() -> None:
+    original = [
+        ContextTurn(1, 2, "나는 디자이너야.", "확인했습니다.", "completed", "stop"),
+        ContextTurn(3, 4, "정정할게. 지금은 데이터 분석가야.", "안", "cancelled", None),
+    ]
+    provider = CountingProvider(lambda messages, options: 100)
+    messages, _, _, selected = await summary_batch(provider, settings(), None, original)
+    assert selected == 2
+    assert records(messages) == [
+        {
+            "user": item.user_content,
+            "assistant": item.assistant_content,
+            "status": item.status,
+            "finish_reason": item.finish_reason,
+        }
+        for item in original
+    ]
+    assert "명시적으로 정정한 사실은 새 값으로 반영" in messages[0].content

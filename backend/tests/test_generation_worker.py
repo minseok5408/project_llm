@@ -7,11 +7,13 @@ from uuid import UUID, uuid4
 import pytest
 
 from backend.app.db import Database
+from backend.app.llm.protocol import ProviderDelta
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.models import GenerationRun, Message, TokenReservation
-from backend.app.providers import MockProvider, ProviderDelta
 from backend.app.repositories import Repository, create_user_with_workspace
+from backend.app.runtime.worker import GenerationWorker
 from backend.app.schemas import ChatMessage, GenerationOptions
-from backend.app.services.generations import GenerationService, GenerationWorker
+from backend.app.services.generations import GenerationService
 from backend.app.services.token_quota import TokenQuotaService
 from backend.tests.conftest import IsolatedPostgres, database_settings
 

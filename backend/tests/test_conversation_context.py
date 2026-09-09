@@ -6,15 +6,16 @@ from uuid import uuid4
 
 import pytest
 
-from backend.app.db import Database
-from backend.app.models import Conversation, GenerationEvent, GenerationRun, Message
-from backend.app.repositories import Repository, create_user_with_workspace
-from backend.app.services.conversation_context import (
+from backend.app.context.builder import (
     SYSTEM_PROMPT,
     ContextTurn,
     compose_context,
     list_context_turns,
 )
+from backend.app.context.policy import SHORT_PARTIAL_MAX_CHARS, is_short_partial
+from backend.app.db import Database
+from backend.app.models import Conversation, GenerationEvent, GenerationRun, Message
+from backend.app.repositories import Repository, create_user_with_workspace
 from backend.app.services.token_quota import TokenQuotaService
 
 
@@ -100,6 +101,51 @@ def test_normal_completed_context_has_no_invented_interruption_note() -> None:
     messages = compose_context([turn("안녕", "안녕하세요.")], "이어서")
     assert messages[0].content == SYSTEM_PROMPT
     assert compose_context([], "처음 질문")[0].content == SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize("status", ["cancelled", "failed", "usage_pending"])
+def test_one_character_interruption_preserves_fact_without_short_assistant_example(
+    status: str,
+) -> None:
+    original = [
+        turn("내 이름은 이가온이야. '알겠습니다'라고만 답해.", "알겠습니다."),
+        turn("난 웹 개발자야.", "안", sequence=3, status=status, finish_reason=None),
+    ]
+    messages = compose_context(original, "내 이름과 직업을 알려줘")
+    assert [message.content for message in messages if message.role == "user"] == [
+        "내 이름은 이가온이야. '알겠습니다'라고만 답해.",
+        "난 웹 개발자야.",
+        "내 이름과 직업을 알려줘",
+    ]
+    assert [message.content for message in messages if message.role == "assistant"] == [
+        "알겠습니다."
+    ]
+    assert f'"turn":2,"status":"{status}","assistant_partial":"안"' in messages[0].content
+    assert "답변 길이도 제한하지 않습니다" in messages[0].content
+    assert original[1].assistant_content == "안"
+
+
+@pytest.mark.parametrize("size", [1, SHORT_PARTIAL_MAX_CHARS, SHORT_PARTIAL_MAX_CHARS + 1])
+def test_short_partial_boundary_uses_non_whitespace_codepoints(size: int) -> None:
+    content = " \n".join("가" for _ in range(size))
+    assert is_short_partial(content, "cancelled", None) is (size <= SHORT_PARTIAL_MAX_CHARS)
+
+
+@pytest.mark.parametrize("content", [None, "", " \n\t"])
+def test_empty_partial_is_not_fabricated_as_reference(content: str | None) -> None:
+    assert not is_short_partial(content, "cancelled", None)
+
+
+@pytest.mark.parametrize("status,reason", [("completed", "stop"), ("cancelled", "length")])
+def test_short_completed_and_length_limited_answers_keep_original_role(
+    status: str, reason: str
+) -> None:
+    messages = compose_context(
+        [turn("인사해줘", "안", status=status, finish_reason=reason)], "이어서 말해"
+    )
+    assert messages[-2].role == "assistant"
+    assert messages[-2].content == "안"
+    assert "<interrupted_response_records>" not in messages[0].content
 
 
 @dataclass

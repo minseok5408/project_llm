@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import { ChatStore, mergeMessages } from '../app/components/chat-store.ts';
+import { ChatStore, mergeMessages } from '../features/chat/state/chat-store.ts';
 import {
   consumeGenerationEvents,
   parseGenerationEvent,
   requestId,
-} from '../app/components/chat-stream.ts';
-import { GraphemeTyper } from '../app/components/grapheme-typer.ts';
+} from '../features/chat/stream/chat-stream.ts';
+import { GraphemeTyper } from '../features/chat/stream/grapheme-typer.ts';
 
 const W = 'b89fc10b-c0e3-49fb-9d37-a7a16b8a9b3f';
 const C = 'd8402e8f-040a-4385-91cc-238d0c65d355';
@@ -64,7 +64,11 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
   afterEach(() => {
     for (const store of stores.splice(0)) store.dispose();
   });
-  function create(override = async () => undefined, navigate = () => {}) {
+  function create(
+    override = async () => undefined,
+    navigate = () => {},
+    networkPolicy,
+  ) {
     const request = async (url, init = {}) => {
       const special = await override(String(url), init);
       if (special !== undefined) return special;
@@ -88,7 +92,7 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
         });
       assert.fail(`Unexpected request: ${init.method ?? 'GET'} ${url}`);
     };
-    const store = new ChatStore(request, navigate);
+    const store = new ChatStore(request, navigate, networkPolicy);
     stores.push(store);
     return store;
   }
@@ -125,7 +129,12 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     assert.match(store.getSnapshot().error, /토큰/);
     await store.send('내 질문', options);
     await store.send('다른 질문', options);
-    assert.deepEqual(attempts[0].body, { content: '내 질문', options });
+    assert.deepEqual(attempts[0].body, {
+      content: '내 질문',
+      options,
+      network_mode: 'local',
+      web_search: 'auto',
+    });
     assert.equal('messages' in attempts[0].body, false);
     assert.equal(attempts[0].key, attempts[1].key);
     assert.notEqual(attempts[1].key, attempts[2].key);
@@ -153,6 +162,153 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     assert.deepEqual(navigations, [C]);
     assert.equal(store.getSnapshot().draft, '첫 질문');
     assert.equal(store.getSnapshot().selected.id, C);
+  });
+
+  it('질문과 재생성 모두 현재 검색 설정을 담고 모드 변경은 별도 재시도 키를 사용한다', async () => {
+    const attempts = [];
+    let policy = { network_mode: 'auto', web_search: 'on' };
+    const store = create(
+      async (url, init) => {
+        if (url.includes('/messages?'))
+          return Response.json({
+            items: [
+              {
+                ...message('assistant-1', 2, '답변'),
+                generation_id: G,
+                can_regenerate: true,
+                is_current: true,
+              },
+            ],
+            next_cursor: null,
+          });
+        if (init.method === 'POST') {
+          attempts.push({
+            url,
+            body: JSON.parse(init.body),
+            key: new Headers(init.headers).get('Idempotency-Key'),
+          });
+          return Response.json({ detail: '연결 실패' }, { status: 503 });
+        }
+      },
+      () => {},
+      () => policy,
+    );
+    await store.initialize(C);
+    const options = { thinking: false, max_tokens: 512 };
+    await store.send('오늘 날씨', options);
+    await store.send('오늘 날씨', options);
+    policy = { network_mode: 'local', web_search: 'on' };
+    await store.send('오늘 날씨', options);
+    assert.deepEqual(attempts[0].body, {
+      content: '오늘 날씨',
+      options,
+      network_mode: 'auto',
+      web_search: 'on',
+    });
+    assert.equal(attempts[0].key, attempts[1].key);
+    assert.notEqual(attempts[1].key, attempts[2].key);
+    assert.equal(attempts[2].body.network_mode, 'local');
+    await store.regenerate('assistant-1', options);
+    policy = { network_mode: 'auto', web_search: 'off' };
+    await store.regenerate('assistant-1', options);
+    assert.deepEqual(attempts[3].body, {
+      options,
+      network_mode: 'local',
+      web_search: 'on',
+    });
+    assert.deepEqual(attempts[4].body, {
+      options,
+      network_mode: 'auto',
+      web_search: 'off',
+    });
+    assert.notEqual(attempts[3].key, attempts[4].key);
+    assert.equal(attempts[3].url, `/api/v1/generations/${G}/regenerate`);
+  });
+
+  it('검색 단계·출처 SSE를 반영하고 중복·잘못된 메타를 무시하며 완료 뒤 DB 출처를 복원한다', async () => {
+    let stream;
+    let done = false;
+    const searching = {
+      status: 'searching',
+      reason: null,
+      provider: 'brave',
+      sources: [],
+    };
+    const completed = {
+      ...searching,
+      status: 'completed',
+      sources: [
+        {
+          number: 1,
+          title: '공식 자료',
+          url: 'https://example.com',
+          snippet: '내용',
+          retrieved_at: '2026-09-09T01:00:00Z',
+        },
+      ],
+    };
+    const store = create(async (url) => {
+      if (url.includes('/messages?'))
+        return Response.json({
+          items: [
+            {
+              ...message('assistant-1', 2, done ? '검색한 답변' : ''),
+              search: done ? completed : null,
+            },
+          ],
+          next_cursor: null,
+          active_generation_id: done ? null : G,
+        });
+      if (url === `/api/v1/generations/${G}`)
+        return Response.json({
+          ...generation,
+          status: done ? 'completed' : 'running',
+        });
+      if (url.includes('/events?'))
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              stream = controller;
+              controller.enqueue(
+                bytes(
+                  encode(1, 'meta', { stage: 'searching', search: searching }),
+                ),
+              );
+            },
+          }),
+        );
+    });
+    await store.initialize(C);
+    await until(() => store.getSnapshot().generation?.stage === 'searching');
+    assert.deepEqual(store.getSnapshot().generation.search, searching);
+    stream.enqueue(
+      bytes(
+        encode(2, 'meta', { search: { status: 'completed', sources: '오류' } }),
+      ),
+    );
+    await tick();
+    assert.deepEqual(store.getSnapshot().generation.search, searching);
+    stream.enqueue(
+      bytes(
+        encode(3, 'meta', { stage: 'generating', search: completed }) +
+          encode(4, 'delta', { text: '검색한 답변' }),
+      ),
+    );
+    await until(() => store.getSnapshot().generation?.stage === 'generating');
+    assert.deepEqual(store.getSnapshot().generation.search, completed);
+    assert.deepEqual(store.getSnapshot().messages[0].search, completed);
+    stream.enqueue(
+      bytes(encode(2, 'meta', { stage: 'searching', search: searching })),
+    );
+    await tick();
+    assert.equal(store.getSnapshot().generation.stage, 'generating');
+    done = true;
+    stream.enqueue(bytes(encode(5, 'done', { finish_reason: 'stop' })));
+    stream.close();
+    await until(() => store.getSnapshot().generation === null);
+    await store.refresh();
+    assert.deepEqual(store.getSnapshot().messages[0].search, completed);
+    assert.equal(store.getSnapshot().messages[0].content, '검색한 답변');
   });
 
   it('진행 중 응답은 DB 부분 본문에 덧붙이지 않고 이벤트를 처음부터 재생한다', async () => {
@@ -688,6 +844,205 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     assert.equal(store.getSnapshot().messages[0].content, '이미 저장된 부분');
     store.dispose();
     controller.close();
+  });
+
+  it('실패 답변을 다시 시도해도 질문·이전 답변·작성 중 입력을 보존하고 요청 키를 재사용한다', async () => {
+    const nextId = 'b01a96ba-0d8f-457f-936f-eed1fcd5b92e';
+    const attempts = [];
+    let accepted = false;
+    const original = {
+      ...message('assistant-1', 2, '이전 부분 답변'),
+      status: 'failed',
+      generation_status: 'failed',
+      generation_id: G,
+      is_current: true,
+      can_regenerate: true,
+    };
+    const store = create(async (url, init) => {
+      if (url.includes('/messages?'))
+        return Response.json({
+          items: [
+            message('user-1', 1, '내 질문', 'user'),
+            { ...original, is_current: !accepted, can_regenerate: !accepted },
+            ...(accepted
+              ? [
+                  {
+                    ...message('assistant-2', 3, '새 답변'),
+                    generation_id: nextId,
+                    is_current: true,
+                    can_regenerate: true,
+                    generation_status: 'completed',
+                    finish_reason: 'length',
+                  },
+                ]
+              : []),
+          ],
+          next_cursor: null,
+          active_generation_id: null,
+        });
+      if (url === `/api/v1/generations/${G}/regenerate`) {
+        attempts.push({
+          body: JSON.parse(init.body),
+          key: new Headers(init.headers).get('idempotency-key'),
+        });
+        if (attempts.length === 1) throw new TypeError('연결 끊김');
+        accepted = true;
+        return Response.json(
+          {
+            generation_id: nextId,
+            user_message_id: 'user-1',
+            assistant_message_id: 'assistant-2',
+            events_url: `/api/v1/generations/${nextId}/events`,
+          },
+          { status: 202 },
+        );
+      }
+      if (url === `/api/v1/generations/${nextId}`)
+        return Response.json({
+          ...generation,
+          id: nextId,
+          status: 'completed',
+          assistant_message_id: 'assistant-2',
+        });
+    });
+    await store.initialize(C);
+    store.setDraft('다음에 보낼 질문');
+    const options = { thinking: true, max_tokens: 1024 };
+    assert.equal(await store.regenerate('assistant-1', options), false);
+    assert.equal(store.getSnapshot().draft, '다음에 보낼 질문');
+    assert.equal(await store.regenerate('assistant-1', options), true);
+    assert.equal(attempts[0].key, attempts[1].key);
+    assert.deepEqual(attempts[0].body, {
+      options,
+      network_mode: 'local',
+      web_search: 'auto',
+    });
+    const state = store.getSnapshot();
+    assert.equal(
+      state.messages.filter((item) => item.role === 'user').length,
+      1,
+    );
+    assert.equal(state.messages[1].content, '이전 부분 답변');
+    assert.equal(state.messages[1].is_current, false);
+    assert.equal(state.messages[2].content, '새 답변');
+    assert.equal(state.messages[2].finish_reason, 'length');
+    assert.equal(state.draft, '다음에 보낼 질문');
+    assert.equal(state.generation, null);
+    assert.equal(await store.regenerate('assistant-1', options), false);
+    assert.equal(attempts.length, 2);
+  });
+
+  it('재생성의 출력 설정을 바꾸면 새 요청 키를 발급하고 기존 요청과 섞지 않는다', async () => {
+    const keys = [];
+    const store = create(async (url, init) => {
+      if (url.includes('/messages?'))
+        return Response.json({
+          items: [
+            {
+              ...message('assistant-1', 2, '원문'),
+              generation_id: G,
+              is_current: true,
+              can_regenerate: true,
+            },
+          ],
+          next_cursor: null,
+        });
+      if (init.method === 'POST') {
+        keys.push(new Headers(init.headers).get('idempotency-key'));
+        return Response.json({ detail: '사용량 부족' }, { status: 402 });
+      }
+    });
+    await store.initialize(C);
+    await store.regenerate('assistant-1', { thinking: false, max_tokens: 512 });
+    await store.regenerate('assistant-1', {
+      thinking: false,
+      max_tokens: 1024,
+    });
+    await store.send('새 질문', { thinking: false, max_tokens: 1024 });
+    assert.equal(new Set(keys).size, 3);
+    assert.equal(store.getSnapshot().messages[0].content, '원문');
+  });
+
+  it('재생성 중의 연속 클릭을 차단하고 화면 이동 뒤 늦은 접수 응답은 무시한다', async () => {
+    let complete;
+    let posts = 0;
+    let submittedSignal;
+    const store = create(async (url, init) => {
+      if (url.includes('/messages?'))
+        return Response.json({
+          items: [
+            {
+              ...message('assistant-1', 2, '원문'),
+              generation_id: G,
+              is_current: true,
+              can_regenerate: true,
+            },
+          ],
+          next_cursor: null,
+        });
+      if (init.method === 'POST') {
+        posts += 1;
+        submittedSignal = init.signal;
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      }
+    });
+    await store.initialize(C);
+    const options = { thinking: false, max_tokens: 512 };
+    const first = store.regenerate('assistant-1', options);
+    assert.equal(await store.regenerate('assistant-1', options), false);
+    assert.equal(posts, 1);
+    store.newDraft();
+    store.setDraft('새 대화 질문');
+    complete(
+      Response.json(
+        {
+          generation_id: G,
+          user_message_id: 'user-1',
+          assistant_message_id: 'assistant-2',
+        },
+        { status: 202 },
+      ),
+    );
+    assert.equal(await first, false);
+    assert.equal(submittedSignal.aborted, true);
+    assert.equal(store.getSnapshot().generation, null);
+    assert.equal(store.getSnapshot().selected, null);
+    assert.equal(store.getSnapshot().draft, '새 대화 질문');
+  });
+
+  it('서버가 재생성을 허용하지 않는 메시지와 보관된 대화에서는 요청하지 않는다', async () => {
+    let archived = false;
+    let allowed = false;
+    const store = create(async (url, init) => {
+      if (url === `/api/v1/conversations/${C}`)
+        return Response.json({
+          ...conversation,
+          status: archived ? 'archived' : 'active',
+        });
+      if (url.includes('/messages?'))
+        return Response.json({
+          items: [
+            {
+              ...message('assistant-1', 2, '원문'),
+              generation_id: G,
+              is_current: true,
+              can_regenerate: allowed,
+            },
+          ],
+          next_cursor: null,
+        });
+      if (init.method === 'POST') assert.fail('허용되지 않은 재생성 요청');
+    });
+    await store.initialize(C);
+    const options = { thinking: false, max_tokens: 512 };
+    assert.equal(await store.regenerate('assistant-1', options), false);
+    assert.equal(await store.regenerate('없는 메시지', options), false);
+    allowed = true;
+    archived = true;
+    await store.openConversation(C);
+    assert.equal(await store.regenerate('assistant-1', options), false);
   });
 
   it('메시지 페이지 병합은 중복 없이 순번을 유지하고 새 DB 값을 우선한다', () => {

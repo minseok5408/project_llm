@@ -8,7 +8,7 @@
 
 브라우저의 메모리에만 있던 대화를 PostgreSQL에 저장한다. 로그인한 사용자는 소속 작업 공간의 대화를 조회하고 `/chat/{id}`에서 다시 열 수 있다. 새 요청에는 사용자 메시지 하나와 허용한 생성 옵션만 보내며 모델 문맥은 서버가 구성한다. 이 결정은 ADR 0005의 “채팅 저장과 실제 토큰 정산은 후속”이라는 당시 제한을 갱신한다. 절대 24시간 세션·로컬 HTTP 정책은 유지한다. 공개 가입의 현재 기본값은 `open`이며 로그인·가입·비밀번호 변경의 8~32자 규칙과 가입 후 자동 로그인은 [ADR 0005](0005-authentication-and-24-hour-sessions.md)를 따른다. 일반 회원의 월 무료 20,000토큰은 [ADR 0007](0007-monthly-allowances.md)에서 자동 지급하며 시스템 권한은 자동 부여하지 않는다.
 
-이 ADR의 `0005_generation_runs`에서 `generation_runs`와 `generation_events`를 추가해 당시 도메인 테이블은 12개가 됐다. 현재는 [ADR 0009](0009-context-compaction-and-continuation.md)의 대화 요약까지 13개다. 기존 계정·대화·메시지·토큰 예산·인증 데이터를 유지하는 업그레이드이며 계정이나 예산을 자동 생성하지 않는다. 모델 추론은 기존 로컬 MLX 서버에서 수행한다. API 안의 생성 worker를 별도 프로세스로 분리하는 일은 후속이다.
+이 ADR의 `0005_generation_runs`에서 `generation_runs`와 `generation_events`를 추가해 당시 도메인 테이블은 12개가 됐다. 현재는 대화 요약과 worker 관측을 포함해 14개다. [ADR 0010](0010-answer-versions-and-independent-worker.md)에서 답변 버전과 독립 worker를 추가했다. 기존 계정·대화·메시지·토큰 예산·인증 데이터를 유지하는 업그레이드이며 계정이나 예산을 자동 생성하지 않는다. 모델 추론은 기존 로컬 MLX 서버에서 수행한다. 현재 생성 worker는 API와 별도 프로세스로 실행된다.
 
 ## 권한과 대화 저장
 
@@ -36,9 +36,9 @@
 
 ## 단일 실행자와 대기열
 
-`GENERATION_WORKER_ENABLED=true`가 기본이다. DB를 활성화한 API는 내장 worker 후보를 시작하고 API pool과 별도의 asyncpg 연결로 PostgreSQL advisory lock을 유지한다. 같은 DB를 사용하는 후보 중 한 개만 복구·claim·추론을 수행한다. claim에는 `FOR UPDATE SKIP LOCKED`를 사용한다. 연결이 사라지면 리더 잠금이 풀리고 다음 리더가 기존 running 작업을 먼저 확인한다.
+`GENERATION_WORKER_ENABLED=false`가 기본이다. `backend.app.worker` 독립 프로세스는 자신의 pool과 별도의 asyncpg 연결로 PostgreSQL advisory lock을 유지한다. `scripts/dev.py`가 함께 실행하며 true는 API 내장 실행자의 호환 옵션이다. 같은 DB를 사용하는 후보 중 한 개만 복구·claim·추론을 수행한다. claim에는 `FOR UPDATE SKIP LOCKED`를 사용한다. 연결이 사라지면 리더 잠금이 풀리고 다음 리더가 기존 running 작업을 먼저 확인한다.
 
-`GENERATION_QUEUE_LIMIT=3`일 때 queued/running 합계 상한은 실행 슬롯을 포함해 4건이며 사용자별·대화별 active 작업은 각각 1건이다. 상한 초과는 스트림 시작 전 `429`와 `Retry-After`로 응답한다. queued 작업은 생성 시각·UUID 순서로 처리한다. 현재 실제 추론은 DB당 1건으로 고정되어 `LLM_MAX_CONCURRENT_GENERATIONS`를 올려도 병렬 worker를 만들지 않는다. 독립 worker 배포, heartbeat·attempt 기록, 더 세밀한 공정성·요청 속도 정책은 후속이다.
+`GENERATION_QUEUE_LIMIT=3`일 때 queued/running 합계 상한은 실행 슬롯을 포함해 4건이며 사용자별·대화별 active 작업은 각각 1건이다. 상한 초과는 스트림 시작 전 `429`와 `Retry-After`로 응답한다. queued 작업은 생성 시각·UUID 순서로 처리한다. 현재 실제 추론은 DB당 1건으로 고정되어 `LLM_MAX_CONCURRENT_GENERATIONS`를 올려도 병렬 worker를 만들지 않는다. 독립 worker와 관측용 heartbeat는 구현했다. attempt 기록, 더 세밀한 공정성·요청 속도 정책은 후속이다.
 
 ## 실제 사용량과 취소·실패
 

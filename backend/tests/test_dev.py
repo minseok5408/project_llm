@@ -53,6 +53,8 @@ def test_dev_reloads_only_application_code(monkeypatch, mock: bool) -> None:
 
     def capture_process(command, **kwargs):
         assert kwargs["cwd"] == dev.ROOT
+        assert kwargs["start_new_session"]
+        assert kwargs["env"]["GENERATION_WORKER_ENABLED"] == "false"
         commands.append(command)
         return SimpleNamespace(returncode=0, poll=lambda: 0, wait=lambda **_: 0)
 
@@ -79,3 +81,45 @@ def test_dev_reloads_only_application_code(monkeypatch, mock: bool) -> None:
     assert not watched("backend/tests/test_generations.py")
     assert not watched("scripts/test_db.py")
     assert not watched("backend/migrations/env.py")
+    worker = next(command for command in commands if "backend.app.worker" in command)
+    assert worker == [dev.sys.executable, "-m", "backend.app.worker"]
+    assert "--reload" not in worker
+
+
+def test_dev_shutdown_waits_for_worker_before_stopping_model(monkeypatch) -> None:
+    stopped = []
+    processes = {}
+    handlers = {}
+
+    class Process:
+        def __init__(self, command, **kwargs):
+            self.pid = len(processes) + 100
+            self.command, self.returncode = command, None
+            processes[self.pid] = self
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, **kwargs):
+            assert self.returncode == 0
+            stopped.append(self.command)
+            return 0
+
+    def terminate(pid, sent_signal):
+        assert sent_signal == dev.signal.SIGTERM
+        processes[pid].returncode = 0
+
+    monkeypatch.setattr(dev, "parse_args", lambda: Namespace(mock=False))
+    monkeypatch.setattr(dev, "get_lan_ipv4_addresses", lambda: [])
+    monkeypatch.setattr(
+        dev.signal, "signal", lambda item, handler: handlers.update({item: handler})
+    )
+    monkeypatch.setattr(dev.subprocess, "Popen", Process)
+    monkeypatch.setattr(dev.os, "killpg", terminate)
+    monkeypatch.setattr(dev.time, "sleep", lambda _: handlers[dev.signal.SIGINT]())
+
+    assert dev.main() == 0
+    assert "npm" in stopped[0]
+    assert "backend.app.worker" in stopped[1]
+    assert "uvicorn" in stopped[2]
+    assert stopped[3][0].endswith("mlx_vlm.server")

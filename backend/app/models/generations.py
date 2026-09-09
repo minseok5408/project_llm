@@ -30,8 +30,17 @@ class GenerationRun(IdentityTimestamps, Base):
     __table_args__ = (
         UniqueConstraint("user_id", "idempotency_key"),
         UniqueConstraint("reservation_id"),
-        UniqueConstraint("user_message_id"),
         UniqueConstraint("assistant_message_id"),
+        CheckConstraint(
+            "supersedes_generation_id IS NULL OR supersedes_generation_id <> id",
+            name="distinct_predecessor",
+        ),
+        Index(
+            "uq_generation_runs_current_question",
+            "user_message_id",
+            unique=True,
+            postgresql_where=text("is_current"),
+        ),
         ForeignKeyConstraint(
             ["workspace_id", "conversation_id"],
             ["conversations.workspace_id", "conversations.id"],
@@ -44,6 +53,9 @@ class GenerationRun(IdentityTimestamps, Base):
         ),
         CheckConstraint("prompt_tokens >= 0 AND max_output_tokens > 0", name="reserved_usage"),
         CheckConstraint("last_event_sequence >= 0", name="event_sequence"),
+        CheckConstraint("network_mode IN ('auto','local')", name="network_mode"),
+        CheckConstraint("network_revision >= 0", name="network_revision"),
+        CheckConstraint("web_search_mode IN ('auto','on','off')", name="web_search_mode"),
         CheckConstraint("jsonb_typeof(request_messages) = 'array'", name="messages_array"),
         CheckConstraint("jsonb_typeof(options) = 'object'", name="options_object"),
         CheckConstraint(
@@ -84,6 +96,12 @@ class GenerationRun(IdentityTimestamps, Base):
     assistant_message_id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
     )
+    supersedes_generation_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("generation_runs.id", ondelete="RESTRICT")
+    )
+    is_current: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     reservation_id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True),
         ForeignKey("token_reservations.id", ondelete="RESTRICT"),
@@ -103,6 +121,15 @@ class GenerationRun(IdentityTimestamps, Base):
     )
     context_compaction_needed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    network_mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="local", server_default=text("'local'")
+    )
+    network_revision: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default=text("0")
+    )
+    web_search_mode: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="off", server_default=text("'off'")
     )
     last_event_sequence: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default=text("0")

@@ -14,12 +14,15 @@ from backend.app.api.auth import router as auth_router
 from backend.app.api.conversations import router as conversations_router
 from backend.app.api.generations import router as generations_router
 from backend.app.api.health import router as health_router
+from backend.app.api.network_mode import router as network_mode_router
 from backend.app.api.usage import router as usage_router
 from backend.app.config import Settings, get_settings
 from backend.app.db import Database
-from backend.app.providers import ChatProvider, build_provider
+from backend.app.llm.protocol import ChatProvider
+from backend.app.llm.registry import build_provider
+from backend.app.runtime.worker import GenerationWorker
 from backend.app.schemas import StatusResponse
-from backend.app.services.generations import GenerationService, GenerationWorker
+from backend.app.services.generations import GenerationService
 
 
 def create_app(
@@ -39,11 +42,13 @@ def create_app(
             Database(app_settings) if app_settings.database_enabled else None
         )
         application.state.generations = None
+        application.state.network_mode = None
         worker = None
         if application.state.database is not None:
             application.state.generations = GenerationService(
                 application.state.database, app_provider, app_settings
             )
+            application.state.network_mode = application.state.generations.network_mode
             if app_settings.generation_worker_enabled:
                 worker = GenerationWorker(application.state.generations)
                 worker.start()
@@ -74,6 +79,7 @@ def create_app(
     application.include_router(conversations_router)
     application.include_router(generations_router)
     application.include_router(usage_router)
+    application.include_router(network_mode_router)
 
     @application.get("/api/status", response_model=StatusResponse)
     async def status(request: Request, auth: CurrentAuth) -> StatusResponse:

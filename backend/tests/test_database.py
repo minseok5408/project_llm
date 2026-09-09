@@ -21,8 +21,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import CreateTable
 
 from backend.app.db import Database, DBSession
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.main import create_app
-from backend.app.providers import MockProvider
 from backend.tests.conftest import (
     PROJECT_ROOT,
     IsolatedPostgres,
@@ -57,7 +57,7 @@ async def test_alembic_round_trip_and_schema_drift_detection(
 ) -> None:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     heads = ScriptDirectory.from_config(config).get_heads()
-    assert heads == ["0009_context_compaction"]
+    assert heads == ["0012_network_search"]
 
     await run_alembic(postgres, "upgrade", "0001_database_baseline")
     assert await version_rows(database) == ["0001_database_baseline"]
@@ -65,8 +65,8 @@ async def test_alembic_round_trip_and_schema_drift_detection(
     assert await version_rows(database) == heads
     await run_alembic(postgres, "check")
 
-    # 데이터가 없는 독립 DB에서 압축 리비전만 되돌린 뒤 다시 적용한다.
-    await run_alembic(postgres, "downgrade", "-1")
+    # 데이터가 없는 독립 DB에서 압축 이전까지 되돌린 뒤 다시 적용한다.
+    await run_alembic(postgres, "downgrade", "0008_deferred_charging")
     assert await version_rows(database) == ["0008_deferred_charging"]
     async with database.engine.connect() as connection:
         tables = await connection.run_sync(lambda sync: inspect(sync).get_table_names())

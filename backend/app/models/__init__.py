@@ -7,7 +7,10 @@ from backend.app.models.conversations import Conversation
 from backend.app.models.generations import GenerationEvent, GenerationRun
 from backend.app.models.messages import Message
 from backend.app.models.quota import TokenBudget, TokenReservation, UsagePlan
+from backend.app.models.user_preferences import UserPreference
 from backend.app.models.users import User
+from backend.app.models.web_search import WebSearchRun
+from backend.app.models.workers import WorkerHeartbeat
 from backend.app.models.workspaces import Workspace, WorkspaceMember
 
 __all__ = [
@@ -23,6 +26,9 @@ __all__ = [
     "TokenReservation",
     "UsagePlan",
     "User",
+    "UserPreference",
+    "WebSearchRun",
+    "WorkerHeartbeat",
     "Workspace",
     "WorkspaceMember",
 ]

@@ -11,6 +11,8 @@ import pytest
 from sqlalchemy import func, select, update
 
 from backend.app.db import Database
+from backend.app.llm.protocol import ProviderDelta, ProviderUnavailable
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.main import create_app
 from backend.app.models import (
     GenerationRun,
@@ -19,9 +21,8 @@ from backend.app.models import (
     TokenReservation,
     User,
 )
-from backend.app.providers import MockProvider, ProviderDelta, ProviderUnavailable
+from backend.app.runtime.worker import GenerationWorker
 from backend.app.schemas import ChatMessage, GenerationOptions
-from backend.app.services.generations import GenerationWorker
 from backend.tests.conftest import IsolatedPostgres, database_settings
 
 pytestmark = pytest.mark.postgres
@@ -542,10 +543,12 @@ async def test_unknown_final_usage_waives_charge_and_allows_another_answer(
     assert [message["role"] for message in provider.counted_contexts[-1]] == [
         "system",
         "user",
-        "assistant",
         "user",
     ]
-    assert provider.counted_contexts[-1][-2]["content"] == "일부 응답"
+    context = provider.counted_contexts[-1]
+    assert context[-2]["content"] == "한글 질문"
+    # 짧은 실패 원문도 삭제하지 않고 완성 답변과 구분한 참고 기록으로 전달한다.
+    assert '"assistant_partial":"일부 응답"' in context[0]["content"]
 
 
 async def test_failure_after_final_usage_still_charges_confirmed_tokens_once(

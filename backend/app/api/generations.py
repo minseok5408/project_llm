@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -21,19 +22,16 @@ from backend.app.api.conversations import (
     read_json_payload,
     read_query,
 )
-from backend.app.models import GenerationEvent, TokenReservation
-from backend.app.providers import ProviderUnavailable
+from backend.app.llm.protocol import ProviderUnavailable
+from backend.app.models import GenerationEvent, TokenReservation, WebSearchRun
 from backend.app.repositories import AccessDenied, Conflict, InvalidInput, RepositoryUnavailable
 from backend.app.schemas import GenerationOptions
 from backend.app.services.auth import AuthService, InvalidSession
-from backend.app.services.generations import (
-    TERMINAL_STATUSES,
-    GenerationService,
-    QueueFull,
-    accessible_run,
-    run_payload,
-)
+from backend.app.services.generations import GenerationService
+from backend.app.services.generations.admission import QueueFull
+from backend.app.services.generations.events import TERMINAL_STATUSES, accessible_run, run_payload
 from backend.app.services.token_quota import QuotaExceeded
+from backend.app.tools.web_search.service import search_payload
 
 router = APIRouter(prefix="/api/v1", tags=["generations"])
 
@@ -42,11 +40,32 @@ class MessagePayload(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
     content: str = Field(min_length=1, max_length=100_000)
     options: GenerationOptions = Field(default_factory=GenerationOptions)
+    network_mode: Literal["auto", "local"] | None = None
+    web_search: Literal["auto", "on", "off"] = "auto"
 
 
 class EventsQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     after: int | None = Field(default=None, ge=0, le=2**63 - 1)
+
+
+class RegeneratePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+    options: GenerationOptions = Field(default_factory=GenerationOptions)
+    network_mode: Literal["auto", "local"] | None = None
+    web_search: Literal["auto", "on", "off"] = "auto"
+
+
+def idempotency_key(request: Request) -> UUID:
+    keys = request.headers.getlist("idempotency-key")
+    try:
+        if len(keys) != 1:
+            raise ValueError
+        return UUID(keys[0])
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="UUID 형식의 Idempotency-Key가 필요합니다."
+        ) from None
 
 
 def service(request: Request) -> GenerationService:
@@ -92,15 +111,7 @@ async def generation_errors():
 async def send_message(conversation_id: str, request: Request, auth: WriteAuth) -> JSONResponse:
     read_query(request, EmptyPayload)
     require_json(request)
-    keys = request.headers.getlist("idempotency-key")
-    try:
-        if len(keys) != 1:
-            raise ValueError
-        key = UUID(keys[0])
-    except ValueError:
-        raise HTTPException(
-            status_code=422, detail="UUID 형식의 Idempotency-Key가 필요합니다."
-        ) from None
+    key = idempotency_key(request)
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)
@@ -119,6 +130,25 @@ async def send_message(conversation_id: str, request: Request, auth: WriteAuth) 
             content=payload.content,
             options=payload.options,
             idempotency_key=key,
+            network_mode=payload.network_mode,
+            web_search=payload.web_search,
+        )
+    return private_json(result, status_code=202)
+
+
+@router.post("/generations/{generation_id}/regenerate", status_code=202)
+async def regenerate_answer(generation_id: str, request: Request, auth: WriteAuth) -> JSONResponse:
+    read_query(request, EmptyPayload)
+    key = idempotency_key(request)
+    payload = await read_json_payload(request, RegeneratePayload)
+    async with generation_errors():
+        result = await service(request).regenerate(
+            auth.user.id,
+            parse_id(generation_id),
+            options=payload.options,
+            idempotency_key=key,
+            network_mode=payload.network_mode,
+            web_search=payload.web_search,
         )
     return private_json(result, status_code=202)
 
@@ -129,12 +159,16 @@ async def get_generation(generation_id: str, request: Request, auth: CurrentAuth
     async with data_session(request) as session:
         run = await accessible_run(session, auth.user.id, parse_id(generation_id))
         reservation = await session.get(TokenReservation, run.reservation_id)
+        search = await session.scalar(
+            select(WebSearchRun).where(WebSearchRun.generation_id == run.id)
+        )
         return private_json(
             {
                 **run_payload(run),
                 "input_tokens": reservation.input_tokens,
                 "output_tokens": reservation.output_tokens,
                 "usage_basis": reservation.usage_basis,
+                "search": search_payload(search),
             }
         )
 

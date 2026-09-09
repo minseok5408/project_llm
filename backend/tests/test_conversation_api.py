@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 from backend.app.db import Database
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.main import create_app
 from backend.app.models import (
     Conversation,
@@ -18,7 +19,6 @@ from backend.app.models import (
     Workspace,
     WorkspaceMember,
 )
-from backend.app.providers import MockProvider
 from backend.app.repositories import Repository
 from backend.app.services.auth import AuthService, csrf_token
 from backend.app.services.token_quota import TokenQuotaService

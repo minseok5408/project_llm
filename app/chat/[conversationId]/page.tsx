@@ -1,4 +1,4 @@
-import { ChatApplication } from '../../components/chat-workbench';
+import { ChatApplication } from '../../../features/chat/components/chat-workbench';
 
 export default function ConversationPage() {
   return <ChatApplication />;

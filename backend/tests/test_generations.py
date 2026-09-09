@@ -11,7 +11,10 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 from backend.app.config import Settings
+from backend.app.context.builder import SYSTEM_PROMPT
 from backend.app.db import Database
+from backend.app.llm.protocol import ProviderDelta, ProviderUnavailable
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.models import (
     Conversation,
     GenerationEvent,
@@ -23,7 +26,6 @@ from backend.app.models import (
     Workspace,
     WorkspaceMember,
 )
-from backend.app.providers import MockProvider, ProviderDelta, ProviderUnavailable
 from backend.app.repositories import (
     AccessDenied,
     Conflict,
@@ -31,14 +33,12 @@ from backend.app.repositories import (
     Repository,
     create_user_with_workspace,
 )
+from backend.app.runtime import worker as worker_module
+from backend.app.runtime.worker import GenerationWorker
 from backend.app.schemas import ChatMessage, GenerationOptions
-from backend.app.services import generations as generation_module
-from backend.app.services.generations import (
-    SYSTEM_PROMPT,
-    GenerationService,
-    GenerationWorker,
-    QueueFull,
-)
+from backend.app.services.generations import GenerationService
+from backend.app.services.generations import events as generation_module
+from backend.app.services.generations.admission import QueueFull
 from backend.app.services.token_quota import QuotaExceeded, TokenQuotaService
 from backend.tests.conftest import IsolatedPostgres, database_settings
 
@@ -403,7 +403,7 @@ async def test_running_cancel_closes_stalled_provider_and_settles_received_token
                 closed.set()
 
     monotonic_values = count()
-    monkeypatch.setattr(generation_module, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(worker_module, "monotonic", lambda: next(monotonic_values))
     harness.service.provider = PausedProvider(harness.settings, delay_seconds=0)
     await harness.grant()
     submitted = await harness.submit(harness.member)
@@ -845,7 +845,7 @@ async def test_worker_cancel_after_final_usage_and_chunk_commit_preserves_text_a
         return result
 
     # 짧은 답변의 시간 기준 flush를 막아 첫 저장이 final usage 이후에 일어나게 한다.
-    monkeypatch.setattr(generation_module, "monotonic", lambda: 0)
+    monkeypatch.setattr(worker_module, "monotonic", lambda: 0)
     monkeypatch.setattr(harness.service, "append_chunk", pause_after_first_commit)
     execution = asyncio.create_task(harness.worker.execute(job))
     try:

@@ -30,8 +30,17 @@ class Settings(BaseSettings):
     llm_compaction_keep_turns: int = Field(default=4, ge=1, le=20)
     llm_compaction_max_tokens: int = Field(default=1_024, ge=128, le=4_096)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
-    generation_worker_enabled: bool = True
+    # API 내장 실행자는 호환용으로만 사용하고 기본 실행은 독립 프로세스가 담당한다.
+    generation_worker_enabled: bool = False
     generation_queue_limit: int = Field(default=3, ge=1, le=20)
+    web_search_provider: Literal["disabled", "tavily", "brave"] = "tavily"
+    web_search_api_key: SecretStr | None = None
+    web_search_timeout_seconds: float = Field(default=8, ge=1, le=30)
+    web_search_max_results: int = Field(default=5, ge=1, le=5)
+    web_search_max_query_chars: int = Field(default=500, ge=20, le=1000)
+    web_search_max_context_chars: int = Field(default=12000, ge=500, le=30000)
+    web_search_check_cache_seconds: float = Field(default=30, ge=0, le=300)
+    web_search_check_timeout_seconds: float = Field(default=2, ge=0.1, le=5)
     database_enabled: bool = False
     database_url: SecretStr | None = None
     migration_database_url: SecretStr | None = None
@@ -45,15 +54,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def protect_database_urls(cls, value: object) -> object:
+    def protect_secrets(cls, value: object) -> object:
         if not isinstance(value, dict):
             return value
         values = dict(value)
-        # 필드 검증 전에 감싸서 구조화된 검증 오류에서도 입력 URL을 가린다.
-        for name in ("database_url", "migration_database_url"):
-            url = values.get(name)
-            if isinstance(url, str):
-                values[name] = SecretStr(url) if url.strip() else None
+        # 필드 검증 전에 감싸서 구조화된 검증 오류에서도 접속 정보와 키를 가린다.
+        for name in ("database_url", "migration_database_url", "web_search_api_key"):
+            secret = values.get(name)
+            if isinstance(secret, str):
+                values[name] = SecretStr(secret) if secret.strip() else None
         return values
 
     @field_validator("database_url", "migration_database_url")

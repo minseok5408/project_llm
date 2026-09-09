@@ -70,6 +70,7 @@ def main() -> int:
     args = parse_args()
     environment = os.environ.copy()
     environment["LLM_BACKEND"] = "mock" if args.mock else "mlx"
+    environment["GENERATION_WORKER_ENABLED"] = "false"
     processes: list[subprocess.Popen[bytes]] = []
     stop_requested = False
 
@@ -87,6 +88,7 @@ def main() -> int:
             "--port",
             "8000",
         ],
+        [sys.executable, "-m", "backend.app.worker"],
         ["npm", "run", "dev"],
     ]
 
@@ -114,12 +116,22 @@ def main() -> int:
     def stop_all() -> None:
         for process in reversed(processes):
             if process.poll() is None:
-                process.terminate()
+                try:
+                    # uvicorn/npm의 자식까지 종료하되 worker 정산 전에는 모델을 닫지 않는다.
+                    os.killpg(process.pid, signal.SIGTERM)
+                    process.wait(timeout=15)
+                except ProcessLookupError:
+                    pass
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    process.wait(timeout=5)
 
     def request_stop(*_: object) -> None:
         nonlocal stop_requested
         stop_requested = True
-        stop_all()
 
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
@@ -127,6 +139,7 @@ def main() -> int:
     mode = "mock" if args.mock else "MLX 4-bit"
     print(f"Starting Qwen Workbench ({mode})", flush=True)
     print("이 Mac: http://localhost:3000 · API(로컬 전용): http://127.0.0.1:8000", flush=True)
+    print("답변 생성: 독립 worker · API 코드 재시작 중에도 생성 유지", flush=True)
     lan_addresses = get_lan_ipv4_addresses()
     if lan_addresses:
         for address in lan_addresses:
@@ -139,16 +152,15 @@ def main() -> int:
 
     try:
         for command in commands:
-            processes.append(subprocess.Popen(command, cwd=ROOT, env=environment))
-        while all(process.poll() is None for process in processes):
+            if stop_requested:
+                break
+            processes.append(
+                subprocess.Popen(command, cwd=ROOT, env=environment, start_new_session=True)
+            )
+        while not stop_requested and all(process.poll() is None for process in processes):
             time.sleep(0.5)
     finally:
         stop_all()
-        for process in processes:
-            try:
-                process.wait(timeout=8)
-            except subprocess.TimeoutExpired:
-                process.kill()
 
     if stop_requested:
         return 0

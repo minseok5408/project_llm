@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from backend.app.providers import ProviderDelta
-from backend.app.services.compaction_service import CompactionCancelled, cancellable
+from backend.app.llm.protocol import ProviderDelta
+from backend.app.runtime.cancellation import GenerationCancelled, cancellable
 
 
 @pytest.mark.asyncio
@@ -30,6 +30,6 @@ async def test_cancel_closes_pending_count_request():
             closed.set()
 
     cancellation = asyncio.create_task(asyncio.sleep(0))
-    with pytest.raises(CompactionCancelled):
+    with pytest.raises(GenerationCancelled):
         await cancellable(count(), cancellation)
     assert closed.is_set()

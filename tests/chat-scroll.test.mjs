@@ -4,7 +4,7 @@ import {
   ChatScrollFollow,
   bottomPosition,
   preserveScrollAnchor,
-} from '../app/components/chat-scroll.ts';
+} from '../features/chat/scroll/chat-scroll.ts';
 
 const position = (scrollTop, scrollHeight = 1200, clientHeight = 400) => ({
   scrollTop,

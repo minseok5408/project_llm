@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { AuthSessionStore } from '../app/components/auth-session.ts';
+import { AuthSessionStore } from '../features/auth/state/auth-session.ts';
 
 const HOUR = 60 * 60 * 1000;
 const session = (overrides = {}) => ({

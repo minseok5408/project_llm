@@ -45,13 +45,13 @@ cp -n .env.example .env
 
 기본 DB 이름은 `project_llm`, 로그인 사용자는 `system`, 주소는 `127.0.0.1:5432`입니다. `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PORT`를 바꾸면 `DATABASE_URL`에도 같은 값을 반영합니다. `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`는 빈 데이터 디렉터리의 최초 초기화에 쓰이므로 기존 volume의 DB 이름·사용자·비밀번호는 `.env` 수정만으로 바뀌지 않습니다. 기존 DB 이름이나 로그인 사용자를 바꿀 때는 PostgreSQL에서 실제 이름을 변경한 뒤 환경 설정과 연결 URL을 맞춥니다.
 
-API는 migration을 자동 적용하지 않습니다. Docker 시작과 Alembic 실행은 위 명령으로 처리합니다. `DATABASE_ENABLED=true`이면 pool을 준비하고 기본 활성화된 생성 worker가 별도 DB 연결로 실행자 잠금을 확보합니다. 현재 head는 `0009_context_compaction`입니다. 도메인 테이블 13개와 기존 월 무료·플랜 예산을 유지하고 `token_reservations.usage_basis`에 정산 기준을 기록합니다. `conversation_compactions`는 대화 요약과 별도 시스템 유지 사용량을 보관합니다. 로그인, 채팅 저장·복원, 무료 월 지급과 답변 종료 후 토큰 차감이 모두 이 DB를 사용합니다.
+API는 migration을 자동 적용하지 않습니다. Docker 시작과 Alembic 실행은 위 명령으로 처리합니다. `DATABASE_ENABLED=true`이면 API와 독립 worker가 각자의 pool을 준비합니다. 현재 head는 `0012_network_search`입니다. 도메인·관측 테이블은 16개이며 기존 월 무료·플랜 예산을 유지하고 `token_reservations.usage_basis`에 정산 기준을 기록합니다. `conversation_compactions`는 대화 요약과 별도 시스템 유지 사용량을, `user_preferences`는 로컬 전용 설정을, `web_search_runs`는 생성별 검색 상태와 출처를 보관합니다. 로그인, 채팅 저장·복원, 무료 월 지급과 답변 종료 후 토큰 차감이 모두 이 DB를 사용합니다.
 
 ### DBeaver에서 테이블 확인
 
 PostgreSQL 연결의 표시 이름을 `docker_project_llm`으로 지정하고 Host `127.0.0.1`, Port `5432`, Database `project_llm`, Username `system`과 `.env`의 `POSTGRES_PASSWORD` 값을 입력합니다. 포트·DB·사용자 설정을 바꿨다면 해당 값을 사용합니다. 연결 후 `docker_project_llm → Schemas → public → Tables`를 새로고침합니다. 연결 표시 이름과 실제 DB 이름은 별도 설정입니다.
 
-`users`, `workspaces`, `workspace_members`, `conversations`, `messages`, `usage_plans`, `token_budgets`, `token_reservations`, `auth_identities`, `auth_sessions`, `generation_runs`, `generation_events`, `conversation_compactions`와 `alembic_version`이 보여야 합니다. migration 자체는 사용자별 예산을 일괄 생성하지 않습니다. 가입·사용량 조회·생성 요청 때 월 무료 플랜과 해당 회원의 월 예산을 자동 준비합니다. 시스템 계정 준비에만 아래 로컬 초기화 명령을 사용합니다. [월 무료 토큰 정책](docs/adr/0007-monthly-allowances.md)을 참고합니다.
+`users`, `workspaces`, `workspace_members`, `conversations`, `messages`, `usage_plans`, `token_budgets`, `token_reservations`, `auth_identities`, `auth_sessions`, `generation_runs`, `generation_events`, `conversation_compactions`, `worker_heartbeats`, `user_preferences`, `web_search_runs`와 `alembic_version`이 보여야 합니다. migration 자체는 사용자별 예산을 일괄 생성하지 않습니다. 가입·사용량 조회·생성 요청 때 월 무료 플랜과 해당 회원의 월 예산을 자동 준비합니다. 시스템 계정 준비에만 아래 로컬 초기화 명령을 사용합니다. [월 무료 토큰 정책](docs/adr/0007-monthly-allowances.md)을 참고합니다.
 
 ### DB 설정
 
@@ -75,7 +75,7 @@ docker compose stop postgres
 docker compose up -d --wait postgres
 ```
 
-`stop`은 개발 volume의 데이터를 유지합니다. `scripts/dev.py`의 `Ctrl+C`는 웹·API·모델 프로세스만 종료하며 Compose로 시작한 DB는 별도로 정지합니다.
+`stop`은 개발 volume의 데이터를 유지합니다. `scripts/dev.py`의 `Ctrl+C`는 웹·worker·API·모델 프로세스만 종료하며 Compose로 시작한 DB는 별도로 정지합니다.
 
 ## 시스템 계정과 토큰 예산 관리
 
@@ -149,16 +149,24 @@ docker compose up -d --wait postgres
 | `DELETE /api/v1/conversations/{id}`                                                    | JSON `{}`로 soft delete, `204`                                      |
 | `GET /api/v1/conversations/{id}/messages?before=<sequence>&limit=50`                   | 시간순 메시지 한 페이지·`next_cursor`·`active_generation_id`        |
 | `GET /api/v1/usage`                                                                    | 자기 계정의 기간 한도·실사용·예약·잔여량; system은 `unlimited=true` |
-| `POST /api/v1/conversations/{id}/messages`                                             | 새 사용자 메시지와 옵션만 승인, `202`                               |
+| `POST /api/v1/conversations/{id}/messages`                                             | 새 사용자 메시지·생성 옵션·검색 모드 승인, `202`                    |
 | `GET /api/v1/generations/{id}`                                                         | 생성 상태와 확정된 입력·출력 사용량                                 |
 | `GET /api/v1/generations/{id}/events?after=0`                                          | 저장한 이벤트 재생; `Last-Event-ID`도 지원                          |
 | `POST /api/v1/generations/{id}/cancel`                                                 | JSON `{}`로 본인이 시작한 생성 중단 요청                            |
+| `POST /api/v1/generations/{id}/regenerate`                                             | 마지막 질문의 현재 답변 재생성; 생성·검색 옵션과 멱등 키, `202`     |
 
-메시지 전송에는 UUID 형식의 `Idempotency-Key` 헤더와 아래 본문을 사용합니다. 같은 키·내용·옵션을 재전송하면 기존 작업을 반환하며 다시 실행하거나 차감하지 않습니다. 같은 키의 다른 요청은 `409`입니다. 기존 `/api/chat`은 `410`을 반환합니다.
+메시지 전송에는 UUID 형식의 `Idempotency-Key` 헤더와 아래 본문을 사용합니다. 같은 키·내용·생성 옵션·검색 모드를 재전송하면 기존 작업을 반환하며 다시 실행하거나 차감하지 않습니다. 같은 키의 다른 요청은 `409`입니다. 기존 `/api/chat`은 `410`을 반환합니다.
 
 ```json
-{ "content": "질문", "options": { "thinking": false, "max_tokens": 1024 } }
+{
+  "content": "질문",
+  "options": { "thinking": false, "max_tokens": 1024 },
+  "network_mode": "auto",
+  "web_search": "auto"
+}
 ```
+
+재생성도 UUID `Idempotency-Key`가 필요하며 본문은 `{ "options": { "thinking": false, "max_tokens": 1024 }, "network_mode": "auto", "web_search": "auto" }`입니다. 질문은 서버 원문을 사용하고 검색은 현재 선택한 설정으로 새로 수행합니다. `network_mode`는 `auto/local`, `web_search`는 `auto/on/off`를 받으며 생성 옵션과 별도의 최상위 필드입니다. 서버의 사용자별 로컬 전용 설정이 항상 우선합니다. 메시지 조회의 assistant 항목에는 `generation_id`, `generation_status`, `is_current`, `can_regenerate`, `finish_reason`, `search`가 포함됩니다. 이전 답변 버전과 검색 출처는 보존하고 현재 버전만 다음 모델 문맥에 넣습니다.
 
 작성자 또는 작업 공간 owner/admin만 대화 정보를 변경·삭제할 수 있습니다. 다른 작업 공간의 ID는 `404`이며 시스템 계정도 같은 소속 검사를 거칩니다. 생성 중인 대화의 보관·삭제는 `409`로 거부합니다. 서버는 클라이언트의 전체 이력·역할·사용량을 받지 않고, 서버 system prompt·저장된 요약·최근 질문과 답변·현재 질문으로 모델 입력을 만듭니다. 완료·중단·실패·기존 사용량 미확정 작업의 사용자 발언과 실제 부분 답변을 포함하며 빈 답변이나 오류 안내를 모델의 답변으로 만들지 않습니다.
 
@@ -166,7 +174,7 @@ docker compose up -d --wait postgres
 
 | 환경 변수                        | 기본값   | 의미                                                                         |
 | -------------------------------- | -------- | ---------------------------------------------------------------------------- |
-| `GENERATION_WORKER_ENABLED`      | `true`   | DB가 활성화되면 API 내부 생성 worker 시작                                    |
+| `GENERATION_WORKER_ENABLED`      | `false`  | API 내장 worker의 호환 옵션; 개발 launcher는 false로 고정                    |
 | `GENERATION_QUEUE_LIMIT`         | `3`      | 전체 queued/running 상한은 이 값 + 실행 슬롯 1개                             |
 | `LLM_CONTEXT_WINDOW`             | `32768`  | 실제 입력 토큰 + 요청 최대 출력량의 상한                                     |
 | `LLM_MAX_HISTORY_CHARS`          | `200000` | 모델에 전달할 전체 문맥의 글자 수 상한; 초과 시 요약 가능한 과거를 압축      |
@@ -178,7 +186,7 @@ docker compose up -d --wait postgres
 
 새 요청은 생성 전에 토큰을 예약·차감하지 않습니다. 남은 토큰 안에서 출력 상한만 정하고 답변 완료·중단 후 확인된 사용량을 한 번 차감합니다. 이전 요청 호환용 예약 이력은 유지합니다. [후정산·스크롤 정책](docs/adr/0008-deferred-charging-and-chat-scroll.md)을 참고하세요.
 
-별도 worker 서버를 실행할 필요는 없습니다. 내장 worker는 API pool 밖의 asyncpg 연결 하나로 PostgreSQL advisory lock을 유지합니다. 같은 DB를 쓰는 API가 여러 개여도 실제 추론 실행자는 하나입니다. 각 API 프로세스의 worker 후보가 전용 연결을 하나씩 사용할 수 있습니다. 사용자는 동시에 하나, 대화도 동시에 하나만 생성할 수 있으며 대기열이 가득 차면 SSE 시작 전에 `429`와 `Retry-After`를 반환합니다.
+`scripts/dev.py`가 API와 별도의 worker 프로세스를 실행합니다. 개별 실행 시에는 `python -m backend.app.worker`를 함께 실행해야 합니다. worker는 자신의 pool 밖의 asyncpg 연결 하나로 PostgreSQL advisory lock을 유지하므로 같은 DB에서 실제 추론 실행자는 하나입니다. API reload는 진행 중인 생성을 종료하지 않습니다. worker 코드·설정 변경은 전체 launcher를 종료한 뒤 다시 실행할 때 반영됩니다. 사용자는 동시에 하나, 대화도 동시에 하나만 생성할 수 있으며 대기열이 가득 차면 SSE 시작 전에 `429`와 `Retry-After`를 반환합니다.
 
 MLX의 `/v1/responses/input_tokens`로 같은 chat template의 실제 입력량을 계산하고 `include_usage`로 받은 최종 입력·출력량을 정산합니다. 입력량 확인 API가 없는 모델 서버는 생성 전에 `503`으로 거부합니다. 오래된 대화가 길어지면 자동 압축하고 답변 생성 직전에 문맥·사용자 허용량을 다시 확인합니다. 현재 질문·마지막 원문만으로도 모델 한도를 넘는 경우에는 질문이나 출력 길이를 줄이거나 새 대화에서 이어가야 합니다. 글자 수 제한도 별도로 유지합니다. 숨겨진 reasoning 본문은 저장하거나 표시하지 않으며 사용량에는 포함됩니다.
 
@@ -192,9 +200,55 @@ MLX의 `/v1/responses/input_tokens`로 같은 chat template의 실제 입력량�
 
 대기 중 중단에는 토큰 차감이 없습니다. 실행 중 중단은 모델 응답 연결을 닫고 정산 후 생성 슬롯을 반환합니다. 최종 실제량을 이미 받았다면 `provider` 기준으로 정산합니다. 최종량이 없으면 서버가 `logprobs`로 확인한 누적 출력이 1토큰 이상일 때 전체 입력과 확인한 출력만 `received`로 정산하고, 확인한 출력이 없으면 `waived` 기준으로 입력·출력 청구량 모두 0으로 면제합니다. 미수신 GPU 사용량을 추정 청구하지 않는 중단 할인 정책이며 정상 완료는 최종 실제량을 사용합니다.
 
+Markdown·표·코드 블록과 답변/코드 복사를 지원합니다. 일반 HTTP LAN에서는 복사 호환 경로를 사용합니다. raw HTML은 렌더링하지 않고 외부 이미지를 자동 로드하지 않습니다. 마지막 질문의 현재 답변에만 다시 생성/다시 시도를 표시하고 이전 버전은 접어서 보존합니다. 재생성은 질문 원문을 그대로 쓰되 새 작업·사용량 기록을 만들며 작성 중인 초안은 유지합니다.
+
 브라우저 연결 종료만으로 생성 작업을 취소하지 않습니다. 다시 열면 이벤트 0부터 재생해 부분 본문을 복구하며 DB의 부분 본문과 중복 합치지 않습니다.
 
 통신 장애·실행자 종료로 최종 사용량을 확인할 수 없는 후정산 요청은 청구량 0의 실패로 끝냅니다. 대화·오류 기록은 보존하고 다음 질문을 허용합니다. 이미 확인된 최종 사용량은 정확히 차감합니다. worker 재기동과 새 요청 승인 시 이전 미정산 후정산 기록도 복구합니다. 기존 사전 예약 방식의 불명 사용량은 예약 보존 정책을 유지합니다. [ADR 0006](docs/adr/0006-persistent-chat-and-usage.md)에 상태·복구 한계를 기록했습니다.
+
+## 온라인과 로컬 전용 모드
+
+로컬 전용 스위치는 기본 OFF이며 설정은 로그인한 사용자별로 DB에 저장합니다. OFF 상태에서 검색 서비스를 사용할 수 있으면 온라인, 연결할 수 없거나 키가 없으면 로컬 모드로 표시합니다. ON으로 바꾸면 서버 연결 검사와 외부 검색을 중단하고 로컬 모델만 사용합니다. 물리적인 Wi-Fi 상태를 판별하는 기능이 아니라 서버에서 검색 서비스에 도달할 수 있는지 확인하는 기능입니다. 다른 기기와 이 Mac 사이의 Wi-Fi/LAN 접속 설정은 그대로 유지합니다.
+
+1. 로컬 `.env`의 `WEB_SEARCH_PROVIDER=tavily`를 확인하고 발급받은 Tavily API 키를 `WEB_SEARCH_API_KEY`에 입력합니다. 기존 `.env`를 예시 파일로 덮어쓰지 않습니다.
+2. 스키마 변경을 적용하려면 `.venv/bin/python -m alembic upgrade head`를 실행합니다.
+3. 기존 개발 실행을 `Ctrl+C`로 종료하고 `.venv/bin/python scripts/dev.py`를 다시 실행합니다. 독립 worker는 API reload만으로 환경 변수를 다시 읽지 않습니다.
+4. 로그인 후 상단의 로컬 전용을 OFF로 두고 연결 상태를 확인합니다. 다시 확인 버튼으로 서버 연결 검사를 요청할 수 있습니다.
+
+| 환경 변수                          | 기본값   | 의미                                                     |
+| ---------------------------------- | -------- | -------------------------------------------------------- |
+| `WEB_SEARCH_PROVIDER`              | `tavily` | 기본 Tavily, 선택 Brave, `disabled`로 서버 검색 비활성화 |
+| `WEB_SEARCH_API_KEY`               | 미설정   | 선택한 공급자의 API 키, 기본 Tavily; 서버에서만 보관     |
+| `WEB_SEARCH_TIMEOUT_SECONDS`       | `8`      | 검색 요청 제한 시간(초)                                  |
+| `WEB_SEARCH_MAX_RESULTS`           | `5`      | 최대 검색 결과 수                                        |
+| `WEB_SEARCH_MAX_QUERY_CHARS`       | `500`    | 외부에 보낼 현재 질문의 최대 글자 수                     |
+| `WEB_SEARCH_MAX_CONTEXT_CHARS`     | `12000`  | 모델에 넣을 검색 자료의 글자 수 상한                     |
+| `WEB_SEARCH_CHECK_CACHE_SECONDS`   | `30`     | 검색 서비스 연결 확인 결과의 캐시 시간(초)               |
+| `WEB_SEARCH_CHECK_TIMEOUT_SECONDS` | `2`      | 연결 확인 요청 제한 시간(초)                             |
+
+키가 없어도 로그인·저장·로컬 답변은 사용할 수 있습니다. 키는 브라우저 설정에 입력하지 않고 `.env`에만 보관합니다. 검색 API 요금·호출 한도는 발급받은 공급자 계정의 조건을 따르며 서비스 토큰 예산과 별개입니다.
+
+2026-09-09 확인 기준 Tavily 무료 플랜은 카드 등록 없이 매월 1,000 API 크레딧을 제공합니다. 검색 크레딧은 앱의 월 무료 LLM 토큰과 다릅니다. 현재 계정 조건은 [Tavily 가격 안내](https://www.tavily.com/pricing)에서 확인합니다.
+
+Tavily 요청은 `search_depth=basic`, `auto_parameters=false`로 고정해 상위 검색으로 자동 전환하지 않습니다. `include_answer`, `include_raw_content`, `include_images`도 false로 보내 검색 요약만 사용하고 최종 답변은 로컬 모델이 생성합니다. [공식 검색 API](https://docs.tavily.com/documentation/api-reference/endpoint/search)를 따릅니다.
+
+Brave 어댑터도 선택 옵션으로 유지합니다. `WEB_SEARCH_PROVIDER=brave`를 사용하려면 `WEB_SEARCH_API_KEY`에 Brave 키를 넣어야 하며, 이 앱은 출처를 DB에 저장하므로 Brave의 [결과 저장 안내](https://brave.com/search/api/)에 따른 저장 권한 계약이 필요합니다. 기본 Tavily 설정에는 이 Brave 전용 조건을 적용하지 않습니다.
+
+웹검색 방식의 기본값은 `자동`입니다. 최신 정보나 명시적인 웹검색 요청에 해당하는 질문만 검색하며, `항상 검색`은 모든 질문에 검색을 시도하고 `검색 안 함`은 해당 답변에 검색을 사용하지 않습니다. 검색 방식은 현재 로그인한 화면의 메모리에 유지하고 생성 작업마다 기록합니다. 설정 미확인·저장 중·API 오류 때 보내는 질문은 로컬 전용으로 제한합니다. 로컬 전용 ON은 웹검색 방식보다 우선합니다. 연결 실패로 자동 로컬 전환해도 사용자의 OFF 선택을 ON으로 바꾸지 않아 다음 질문에서 재연결을 시도할 수 있습니다.
+
+검색에는 현재 질문의 앞부분 기본 최대 500자만 전송합니다. 이전 대화, 문맥 요약, 전체 모델 입력, 사용자 쿠키와 로그인 세션은 전송하지 않습니다. Tavily 응답의 제목·요약·링크를 참고하며 원문 페이지 본문을 직접 가져오거나 JavaScript를 실행하지 않습니다. 외부 검색 자료는 비신뢰 참고 자료로 전달하고 실제 입력 토큰을 다시 계산한 뒤 답변을 생성합니다. 문맥·남은 예산에 맞춰 자료 수와 출력 상한을 줄이며, 자료를 포함하지 못하면 그 사실을 안내하고 로컬 답변으로 진행합니다.
+
+화면은 `검색 중`과 모델 `생성 중`을 구분하고, 답변 아래에 출처 번호·제목 링크·조회 시각을 표시합니다. 검색 실패·오프라인·빈 결과에서는 질문을 보존하고 최신 정보를 확인하지 못했다는 안내와 함께 로컬 답변을 생성합니다. 검색 도중 답변 중단을 누르면 기존 중단 동작으로 전체 생성을 종료합니다. 로컬 전용 설정의 revision이 바뀌면 대기 중이거나 진행 중인 검색은 외부 요청을 중단하고 로컬 답변으로 전환합니다. 이미 완료된 답변의 출처를 삭제하거나 모델 생성을 일시정지하지 않습니다.
+
+검색 자료가 실제 답변 입력에 포함되면 그 토큰도 사용자 입력 사용량에 포함하며, 출력과 함께 완료·중단 후 기존 정책으로 한 번 정산합니다. 생성 전에 토큰을 차감하지 않으며 자동 요약 토큰의 사용자 비차감 정책도 유지합니다.
+
+| 요청                              | 본문·응답                                                                                     |
+| --------------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET /api/v1/network-mode`        | 인증 필수. `local_only`, `revision`, `mode`, `reason`, `search_configured`, `checked_at` 반환 |
+| `PATCH /api/v1/network-mode`      | `{ "local_only": true }` 또는 `false`; 인증·CSRF·Origin 검증 후 저장                          |
+| `POST /api/v1/network-mode/check` | JSON `{}`; 인증·CSRF·Origin 검증 후 강제 재확인. 로컬 전용이면 외부 요청하지 않음             |
+
+GET도 저장된 정책에 따라 캐시가 만료되면 짧은 검사를 수행합니다. 화면은 초기 조회와 수동 재확인만 사용하며 자동 폴링하지 않습니다. 서버의 검색 결과 메타로 진행 중 생성의 온라인·오프라인 변화도 표시합니다. 생성 조회·메시지의 `search`에는 상태·사유·공급자·출처 목록이 있고 SSE `meta`에는 `stage=searching/generating/compacting`과 검색 상태가 전달됩니다. 실제 Tavily 호출과 최신 질문의 출처·의미 정확도는 키 등록 뒤 별도로 검증합니다. [설계와 범위](docs/adr/0011-online-local-web-search.md)를 참고하세요.
 
 ## 실제 Qwen 모델로 전체 실행
 
@@ -231,16 +285,26 @@ MLX의 `/v1/responses/input_tokens`로 같은 chat template의 실제 입력량�
 ### 터미널 2: FastAPI 게이트웨이
 
 ```bash
-.venv/bin/python -m uvicorn backend.app.main:app --reload --reload-dir backend/app --host 127.0.0.1 --port 8000
+GENERATION_WORKER_ENABLED=false .venv/bin/python -m uvicorn backend.app.main:app --reload --reload-dir backend/app --host 127.0.0.1 --port 8000
 ```
 
-### 터미널 3: 채팅 화면
+### 터미널 3: 독립 생성 worker
+
+```bash
+.venv/bin/python -m backend.app.worker
+```
+
+`DATABASE_ENABLED=true`가 필요합니다. API를 개별 실행할 때 기존 `.env`의 `GENERATION_WORKER_ENABLED`도 `false`로 설정합니다.
+
+### 터미널 4: 채팅 화면
 
 ```bash
 npm run dev
 ```
 
 ## 검사
+
+폴더 구조 변경 후에도 API 진입점 `backend.app.main:app`, worker 진입점 `backend.app.worker`, npm 실행 명령은 같습니다. 이번 구조 변경에는 DB migration이나 환경 변수 변경이 없습니다. 소스와 테스트는 [tree.md](tree.md)의 새 경로를 사용하며, 구조 결정은 [ADR 0012](docs/adr/0012-feature-runtime-structure.md)에 기록합니다.
 
 DB 없는 빠른 검사입니다. `TEST_DATABASE_URL`이 없으면 PostgreSQL 통합 테스트는 skip으로 표시됩니다.
 
@@ -255,9 +319,23 @@ npx tsc --noEmit
 npm run build
 ```
 
-`test:proxy`는 실제 서버를 띄우지 않고 LAN 요청의 쿠키·Origin·API 전달·SSE·취소·오류·경로 제한을 검사합니다. `test:auth`는 메모리 세션·24시간 만료·401·로그아웃·세션 교체 경쟁을, `test:chat`은 대화 복원·화면 이동·재연결·생성 상태 경쟁과 grapheme 표시·중단 대기열을 검사합니다. 스크롤 따라가기 검사를 포함한 프런트 테스트 전체를 실행하려면 `node --experimental-strip-types --test tests/*.test.mjs`를 사용합니다. 이 검사는 브라우저 화면을 열거나 실제 UI를 조작하지 않습니다. `backend/tests/test_dev.py`는 시작 로그에 표시할 내부 IP 선택을 검사합니다. PostgreSQL 통합 검사에는 생성 멱등성·정산 기준·중단 후 차감과 기존 예약 해제·SSE 재생·두 백그라운드 worker의 리더 선출과 연결 정리도 포함합니다.
+`test:proxy`는 실제 서버를 띄우지 않고 LAN 요청의 쿠키·Origin·API 전달·SSE·취소·오류·경로 제한을 검사합니다. `test:auth`는 메모리 세션·24시간 만료·401·로그아웃·세션 교체 경쟁을, `test:chat`은 대화 복원·화면 이동·재연결·생성 상태 경쟁과 grapheme 표시·중단 대기열, 재생성·Markdown SSR·복사 대체 처리를 검사합니다. 스크롤 따라가기 검사를 포함한 프런트 테스트 전체를 실행하려면 `node --experimental-strip-types --test tests/*.test.mjs`를 사용합니다. 이 검사는 브라우저 화면을 열거나 실제 UI를 조작하지 않습니다. `backend/tests/test_dev.py`는 내부 IP 선택·프로세스 그룹·worker 분리와 종료 순서를, `test_worker_entrypoint.py`는 독립 worker 진입점과 종료 정리를 검사합니다. PostgreSQL 통합 검사에는 생성 멱등성·정산 기준·중단 후 차감과 기존 예약 해제·SSE 재생·두 백그라운드 worker의 리더 선출과 연결 정리도 포함합니다.
 
 자동 압축 검사는 모델을 호출하지 않는 테스트 provider로 요약 재사용·원문 보존·입력 및 출력 한도·잘린 요약 거부·중단과 장애 복구·권한 경계·사용자 무차감을 확인합니다. 실제 Qwen의 장기 회상 정확도와 문장·코드 이어 쓰기 품질은 별도 평가 항목이며 코드 검사로 보장하지 않습니다. 실행별 결과는 [todo.md](todo.md)에 기록합니다.
+
+검색 기능의 프런트 상태 머신·SSR 검사는 `npm run test:frontend`에 포함됩니다. 가짜 HTTP 공급자와 격리 DB로 외부 통신 차단·실패·중단·출처 저장·모드 권한·토큰 정산을 검사하며, 실제 Tavily 키를 사용하는 호출과 실제 모델의 최신 정보 정확도 검사는 별도로 남깁니다.
+
+기억·이어쓰기의 기본 오프라인 계약 검사는 아래 명령으로 실행합니다. 6개 가상 대화와 108턴 누적 압축을 검사하며 실제 모델의 정답률로 간주하지 않습니다.
+
+```bash
+.venv/bin/python scripts/evaluate_context.py --output /private/tmp/context-contract.json
+```
+
+기존 로컬 모델의 정량 회상 평가를 명시적으로 실행하려면 다음 명령을 사용합니다. 새 서버는 시작하지 않지만 모델 추론을 수행하며 실제 앱과 함께 실행하지 않습니다. 결과에 모델·정책 버전, 시간·토큰, 단어 기반 회상 점수와 실패를 기록합니다. 전체 사례는 `--case`를 생략합니다. 표현상 동의어나 의미 정확도는 결과를 따로 검토해야 합니다.
+
+```bash
+.venv/bin/python scripts/evaluate_context.py --mode model --case short_cancelled_recall --output /private/tmp/context-model.json
+```
 
 로컬 Docker 엔진이 실행 중이면 다음 한 명령으로 실제 PostgreSQL과 전체 백엔드 테스트를 검증합니다.
 
@@ -267,7 +345,7 @@ npm run build
 
 runner는 고유 Compose 프로젝트, 무작위 비밀번호와 loopback 포트, tmpfs 데이터 디렉터리를 사용합니다. `compose.test.yaml`을 독립적으로 실행하며 Compose에는 `--env-file /dev/null`을 전달합니다. 테스트 subprocess의 `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `TEST_DATABASE_URL`은 임시 DB 주소로 덮어씁니다. 개발 DB와 개발용 `.env`는 변경하지 않습니다.
 
-검사 순서는 `alembic upgrade head` → `downgrade base` → `upgrade head` → `check` → 전체 `pytest`입니다. 통합 테스트는 각자 별도의 `qwen_test_<uuid>` DB를 만들고 정리합니다. 실패·중단 시에도 runner가 생성한 임시 Compose 프로젝트만 정리합니다. 웹·API·모델 서버를 띄우거나 외부 배포하지 않으며 첫 실행에는 PostgreSQL 이미지를 내려받을 수 있습니다.
+검사 순서는 `alembic upgrade head` → `downgrade base` → `upgrade head` → `check` → 전체 `pytest`입니다. 통합 테스트는 각자 별도의 `qwen_test_<uuid>` DB를 만들고 정리합니다. 실패·중단 시에도 runner가 생성한 임시 Compose 프로젝트만 정리합니다. 웹·API·모델 서버를 띄우지 않으며, 독립 worker 검사는 격리 DB에 연결한 Mock 자식 프로세스만 사용합니다. 외부 배포하지 않으며 첫 실행에는 PostgreSQL 이미지를 내려받을 수 있습니다.
 
 직접 준비한 테스트 PostgreSQL을 사용할 때는 `TEST_DATABASE_URL`을 전용 `qwen_test` 또는 `qwen_test_*` DB로 지정하고 `.venv/bin/python -m pytest`를 실행합니다. 이 계정에는 별도 테스트 DB의 생성·삭제 권한이 필요합니다. URL을 지정했는데 DB에 접속할 수 없으면 통합 테스트가 실패합니다.
 
@@ -278,6 +356,7 @@ API가 실행 중일 때 확인할 수 있습니다.
 ```bash
 curl -i http://127.0.0.1:8000/health/live
 curl -i http://127.0.0.1:8000/health/ready
+curl -i http://127.0.0.1:8000/health/worker
 ```
 
 `/health/live`와 기존 `/health`는 DB·모델을 조회하지 않고 `200`과 `{"status":"ok"}`를 반환합니다. DB 비활성화 + Mock에서는 `/health/ready`가 `200`과 다음 응답을 반환합니다.
@@ -299,9 +378,15 @@ DB와 모델 검사는 병렬로 실행합니다. 모델 검사 timeout은 최�
 
 readiness는 의존 서비스 연결 상태만 확인하므로 migration 최신 여부, 생성 worker의 리더 상태나 입력 토큰 계산 API 지원을 보장하지 않습니다. 모델 판정은 `provider.status()`를 사용합니다. MLX는 `/v1/models`의 HTTP 응답 성공만 확인하며 설정한 모델이 실제 목록에 있는지, 추론 warm-up을 마쳤는지는 검사하지 않습니다.
 
+`/health/worker`는 최근 10초 이내의 heartbeat와 종료 상태를 확인하고 `queued`·`running` 건수만 반환합니다. 실행 중이면 `200`, 누락·오래됨·종료·DB 장애이면 `503`, DB 비활성이면 `disabled`와 `200`입니다. heartbeat는 약 2초마다 갱신하며 진단에만 사용합니다. 새 리더의 복구 권한은 DB 세션 잠금으로 결정하고, 시간 만료만으로 생성 작업을 다시 실행하지 않습니다.
+
 ## DB 기반 변경 롤백
 
 로그인 도입 후에는 `DATABASE_ENABLED=false`로 바꾸면 로그인·채팅이 중단됩니다. 익명 채팅으로 자동 전환하지 않습니다. 앱을 중단해도 PostgreSQL 테이블과 volume은 보존합니다.
+
+`0012_network_search`는 검색 기록이 있으면 다운그레이드를 거절합니다. 이전 스키마로 되돌리며 이미 제공한 답변의 출처를 삭제하지 않습니다. 기록이 없는 임시 DB에서는 검색 테이블·사용자 모드 설정·요청별 모드 필드를 제거합니다.
+
+`0011_answer_versions`는 재생성 이력이 있으면 다운그레이드를 거절합니다. 이전 스키마가 같은 질문의 여러 답변을 표현하지 못하므로 원문이나 정산 이력을 임의 삭제하지 않습니다. `0010_worker_heartbeat` 다운그레이드는 worker 관측 기록만 제거합니다.
 
 `0009_context_compaction` 다운그레이드는 요약·압축 사용량 기록과 생성 작업의 압축 대기 표시를 제거합니다. 원본 메시지·사용자 토큰 예산·답변 정산 이력은 유지하지만 저장된 요약을 잃으므로, 작업을 종료하고 필요한 요약·유지 사용량을 보존한 뒤 이전 코드와 함께 되돌립니다.
 
@@ -313,7 +398,7 @@ readiness는 의존 서비스 연결 상태만 확인하므로 migration 최신 
 
 `0005_generation_runs`의 다운그레이드는 생성 작업·이벤트와 멱등 실행 이력을 삭제하지만 기존 메시지·토큰 예약은 남깁니다. 진행 작업과 미확정 예약을 자동 정산하지 않으므로 운영 DB의 단순 되돌리기 수단으로 사용하지 않습니다. `0004_auth_sessions`의 다운그레이드는 비밀번호 인증 수단과 로그인 세션을 삭제합니다. `0003_system_token_quotas`는 사용자 플랫폼 권한 열과 토큰 관리 테이블 3개를, `0002_core_chat_schema`는 사용자·작업 공간·소속·대화·메시지와 데이터를 삭제합니다. 마이그레이션 왕복 검사는 `.venv/bin/python scripts/test_db.py`의 임시 DB에서만 실행합니다. 실제 DB를 이전 구조로 되돌리기 전에는 worker를 정지하고 작업·예약 상태 확인, 백업과 복구 계획을 마련합니다.
 
-`0001_database_baseline` 자체의 다운그레이드는 revision 기록만 해제하지만, 현재 head에서 `downgrade base`를 실행하면 먼저 도메인 13개 테이블을 삭제하게 됩니다. 이전 코드의 스키마 비교를 통과시키기 위해 테이블을 지우지 않습니다. 상세 범위는 [대화·생성의 롤백 절차](docs/adr/0006-persistent-chat-and-usage.md#검증과-롤백)를 따릅니다.
+`0001_database_baseline` 자체의 다운그레이드는 revision 기록만 해제하지만, 현재 head에서 `downgrade base`를 실행하면 먼저 도메인·관측 16개 테이블을 삭제하게 됩니다. 다만 검색·재생성·무료 예산 등 보존 조건에 해당하는 데이터가 있으면 해당 revision에서 거부합니다. 이전 코드의 스키마 비교를 통과시키기 위해 테이블을 지우지 않습니다. 상세 범위는 [대화·생성의 롤백 절차](docs/adr/0006-persistent-chat-and-usage.md#검증과-롤백)를 따릅니다.
 
 ## 코드 포맷
 

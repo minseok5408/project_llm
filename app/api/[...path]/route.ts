@@ -12,19 +12,23 @@ const API_METHODS: Readonly<Record<string, readonly string[]>> = {
   '/api/v1/workspaces': ['GET'],
   '/api/v1/conversations': ['GET', 'POST'],
   '/api/v1/usage': ['GET'],
+  '/api/v1/network-mode': ['GET', 'PATCH'],
+  '/api/v1/network-mode/check': ['POST'],
 };
 const UUID =
   '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const CONVERSATION = new RegExp(`^/api/v1/conversations/${UUID}$`);
 const MESSAGES = new RegExp(`^/api/v1/conversations/${UUID}/messages$`);
 const GENERATION = new RegExp(`^/api/v1/generations/${UUID}(?:/events)?$`);
-const CANCEL = new RegExp(`^/api/v1/generations/${UUID}/cancel$`);
+const GENERATION_ACTION = new RegExp(
+  `^/api/v1/generations/${UUID}/(?:cancel|regenerate)$`,
+);
 
 function allowedMethods(path: string): readonly string[] | undefined {
   if (CONVERSATION.test(path)) return ['GET', 'PATCH', 'DELETE'];
   if (MESSAGES.test(path)) return ['GET', 'POST'];
   if (GENERATION.test(path)) return ['GET'];
-  if (CANCEL.test(path)) return ['POST'];
+  if (GENERATION_ACTION.test(path)) return ['POST'];
   return API_METHODS[path];
 }
 const REQUEST_HEADERS = [

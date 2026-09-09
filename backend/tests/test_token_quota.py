@@ -1074,7 +1074,7 @@ async def test_downgrade_blocks_pending_deferred_then_preserves_completed_usage(
     request = await begin_deferred(schema_database, actors.member, "migration", 60)
     await schema_database.dispose()
     await run_alembic(postgres, "downgrade", "0007_cancellation_usage", success=False)
-    assert await version_rows(schema_database) == ["0009_context_compaction"]
+    assert await version_rows(schema_database) == ["0012_network_search"]
     async with schema_database.session() as session:
         await TokenQuotaService(session, actors.member).settle(
             request_key="migration", input_tokens=10, output_tokens=5, usage_basis="received"

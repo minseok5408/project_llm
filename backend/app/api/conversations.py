@@ -9,12 +9,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.auth import CurrentAuth, WriteAuth, require_json
 from backend.app.db import Database
-from backend.app.models import Conversation, Message
+from backend.app.models import Conversation, GenerationEvent, GenerationRun, Message, WebSearchRun
 from backend.app.repositories import (
     AccessDenied,
     Conflict,
@@ -22,6 +23,7 @@ from backend.app.repositories import (
     Repository,
     RepositoryUnavailable,
 )
+from backend.app.tools.web_search.service import search_payload
 
 router = APIRouter(prefix="/api/v1", tags=["conversations"])
 
@@ -243,9 +245,65 @@ async def list_messages(conversation_id: str, request: Request, auth: CurrentAut
             conversation.workspace_id, conversation.id, **query.model_dump()
         )
         active = await repository.active_generation_ids([conversation.id])
+        runs = list(
+            (
+                await session.scalars(
+                    select(GenerationRun).where(
+                        GenerationRun.conversation_id == conversation.id,
+                        GenerationRun.assistant_message_id.in_([item.id for item in page.items]),
+                    )
+                )
+            ).all()
+        )
+        search_rows = (
+            await session.scalars(
+                select(WebSearchRun).where(WebSearchRun.generation_id.in_([run.id for run in runs]))
+            )
+        ).all()
+        searches = {row.generation_id: search_payload(row) for row in search_rows}
+        latest_user_id = await session.scalar(
+            select(Message.id)
+            .where(Message.conversation_id == conversation.id, Message.role == "user")
+            .order_by(Message.sequence.desc())
+            .limit(1)
+        )
+        done_events = (
+            await session.scalars(
+                select(GenerationEvent)
+                .where(
+                    GenerationEvent.generation_id.in_([run.id for run in runs]),
+                    GenerationEvent.kind == "done",
+                )
+                .order_by(GenerationEvent.sequence.desc())
+            )
+        ).all()
+        reasons = {}
+        for event in done_events:
+            reason = event.payload.get("finish_reason")
+            reasons.setdefault(
+                event.generation_id, reason if reason in ("stop", "length") else None
+            )
+        metadata = {
+            run.assistant_message_id: {
+                "generation_id": run.id,
+                "generation_status": run.status,
+                "is_current": run.is_current,
+                "can_regenerate": run.is_current
+                and run.user_id == auth.user.id
+                and run.user_message_id == latest_user_id
+                and conversation.status == "active"
+                and run.status in ("completed", "failed", "cancelled", "usage_pending")
+                and not active.get(conversation.id),
+                "finish_reason": reasons.get(run.id),
+                "search": searches.get(run.id),
+            }
+            for run in runs
+        }
         return private_json(
             {
-                "items": [message_payload(item) for item in page.items],
+                "items": [
+                    {**message_payload(item), **metadata.get(item.id, {})} for item in page.items
+                ],
                 "next_cursor": page.next_cursor,
                 "active_generation_id": active.get(conversation.id),
             }

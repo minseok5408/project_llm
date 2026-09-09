@@ -123,6 +123,58 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
     assert.equal(upstreamSignal.aborted, true);
   });
 
+  it('네트워크 설정 조회·변경·검사 경로만 허용하고 인증 헤더를 유지한다', async () => {
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      const request = new Request(url, init);
+      calls.push({
+        method: request.method,
+        url: request.url,
+        csrf: request.headers.get('x-csrf-token'),
+        body: request.method === 'GET' ? null : await request.json(),
+      });
+      return Response.json({ local_only: true });
+    };
+    for (const { handler, method, suffix, body } of [
+      { handler: GET, method: 'GET', suffix: '', body: null },
+      {
+        handler: PATCH,
+        method: 'PATCH',
+        suffix: '',
+        body: { local_only: true },
+      },
+      { handler: POST, method: 'POST', suffix: '/check', body: {} },
+    ]) {
+      const result = await handler(
+        new Request(`${LAN_ORIGIN}/api/v1/network-mode${suffix}`, {
+          method,
+          headers: {
+            Origin: LAN_ORIGIN,
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': 'synthetic-csrf',
+          },
+          ...(body === null ? {} : { body: JSON.stringify(body) }),
+        }),
+      );
+      assert.equal(result.status, 200);
+    }
+    assert.deepEqual(
+      calls.map((call) => call.method),
+      ['GET', 'PATCH', 'POST'],
+    );
+    assert.deepEqual(calls[1].body, { local_only: true });
+    assert.deepEqual(calls[2].body, {});
+    for (const call of calls) {
+      assert.match(call.url, /^http:\/\/127.0.0.1:8000\/api\/v1\/network-mode/);
+      assert.equal(call.csrf, 'synthetic-csrf');
+    }
+    const wrong = await GET(
+      new Request(`${LAN_ORIGIN}/api/v1/network-mode/check`),
+    );
+    assert.equal(wrong.status, 405);
+    assert.equal(calls.length, 3);
+  });
+
   it(
     '완료되지 않은 SSE의 첫 청크를 즉시 반환하고 스트림 취소를 전파한다',
     { timeout: 2_000 },
@@ -202,6 +254,12 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       { handler: POST, method: 'POST', path: '/api/chat/extra', expected: 404 },
       { handler: GET, method: 'GET', path: '/api/chat', expected: 405 },
       { handler: POST, method: 'POST', path: '/api/status', expected: 405 },
+      {
+        handler: GET,
+        method: 'GET',
+        path: '/api/v1/generations/d8402e8f-040a-4385-91cc-238d0c65d355/regenerate',
+        expected: 405,
+      },
     ]) {
       const response = await handler(
         new Request(`${LAN_ORIGIN}${path}`, { method }),
@@ -277,6 +335,7 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       '/api/v1/auth/signup',
       '/api/v1/auth/logout',
       '/api/v1/auth/logout-all',
+      '/api/v1/generations/d8402e8f-040a-4385-91cc-238d0c65d355/regenerate',
     ]) {
       for (const origin of [
         undefined,
@@ -304,6 +363,7 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       '/api/chat',
       '/api/v1/auth/login',
       '/api/v1/auth/signup',
+      '/api/v1/generations/d8402e8f-040a-4385-91cc-238d0c65d355/regenerate',
     ]) {
       for (const contentType of [
         undefined,
@@ -340,6 +400,7 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       [GET, 'GET', `/api/v1/generations/${id}`],
       [GET, 'GET', `/api/v1/generations/${id}/events?after=27`],
       [POST, 'POST', `/api/v1/generations/${id}/cancel`],
+      [POST, 'POST', `/api/v1/generations/${id}/regenerate`],
     ];
     globalThis.fetch = async (url, init) => {
       assert.equal(new Headers(init.headers).get('idempotency-key'), id);
@@ -368,6 +429,8 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       `/api/v1/conversations/${id}/members`,
       `/api/v1/generations/${id}/restart`,
       `/api/v1/generations/${id}%2fevents`,
+      `/api/v1/generations/not-a-uuid/regenerate`,
+      `/api/v1/generations/${id}/regenerate/extra`,
     ]) {
       assert.equal(
         (await GET(new Request(`${LAN_ORIGIN}${path}`))).status,

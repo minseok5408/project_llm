@@ -6,12 +6,9 @@ import httpx
 import pytest
 
 from backend.app.config import Settings
-from backend.app.providers import (
-    MlxServerProvider,
-    MockProvider,
-    ProviderDelta,
-    ProviderUnavailable,
-)
+from backend.app.llm.protocol import ProviderDelta, ProviderUnavailable
+from backend.app.llm.providers.mlx import MlxServerProvider
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.schemas import ChatMessage, GenerationOptions
 
 
@@ -90,7 +87,7 @@ def mlx(monkeypatch: pytest.MonkeyPatch) -> Callable:
         def client(*args, **kwargs):
             return client_type(*args, transport=transport, **kwargs)
 
-        monkeypatch.setattr("backend.app.providers.httpx.AsyncClient", client)
+        monkeypatch.setattr("backend.app.llm.providers.mlx.httpx.AsyncClient", client)
         return MlxServerProvider(settings())
 
     return build

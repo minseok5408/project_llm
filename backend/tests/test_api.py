@@ -5,8 +5,8 @@ import pytest
 
 from backend.app.api.auth import require_auth, require_write_auth
 from backend.app.config import Settings
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.main import create_app
-from backend.app.providers import MockProvider
 
 
 def make_settings() -> Settings:

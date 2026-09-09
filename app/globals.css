@@ -139,3 +139,118 @@
   color: var(--primary);
   animation: caret-pulse 0.9s steps(1) infinite;
 }
+
+.chat-markdown {
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol,
+.chat-markdown blockquote,
+.chat-markdown .markdown-code-block,
+.chat-markdown .markdown-table-scroll {
+  margin: 0.8rem 0;
+}
+
+.chat-markdown p {
+  white-space: pre-wrap;
+}
+
+.chat-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.1rem 0 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.chat-markdown h1 {
+  font-size: 1.35em;
+}
+.chat-markdown h2 {
+  font-size: 1.2em;
+}
+.chat-markdown h3 {
+  font-size: 1.1em;
+}
+.chat-markdown ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+.chat-markdown ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
+.chat-markdown li {
+  margin: 0.25rem 0;
+}
+.chat-markdown li > :is(ul, ol) {
+  margin: 0.25rem 0;
+}
+.chat-markdown .contains-task-list {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+.chat-markdown .task-list-item input {
+  margin-right: 0.6rem;
+}
+.chat-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.chat-markdown blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+}
+.chat-markdown hr {
+  margin: 1.25rem 0;
+  border-color: var(--border);
+}
+.chat-markdown :not(pre) > code {
+  background: var(--muted);
+  padding: 0.1rem 0.3rem;
+  font-size: 0.9em;
+}
+.chat-markdown .markdown-code-block {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+.chat-markdown pre {
+  overflow-x: auto;
+  padding: 1rem;
+  white-space: pre;
+  line-height: 1.65;
+  font-size: 0.85rem;
+}
+.chat-markdown .markdown-table-scroll {
+  overflow-x: auto;
+}
+.chat-markdown table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.chat-markdown :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+.chat-markdown th {
+  background: var(--muted);
+  font-weight: 600;
+}
+.chat-markdown .markdown-image-link {
+  font-size: 0.9em;
+  color: var(--muted-foreground);
+}

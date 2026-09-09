@@ -15,9 +15,9 @@ from sqlalchemy import select, update
 from backend.app.api.auth import AuthRateLimiter
 from backend.app.config import Settings
 from backend.app.db import Database
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.main import create_app
 from backend.app.models import AuthSession, User
-from backend.app.providers import MockProvider
 from backend.app.repositories import create_user_with_workspace
 from backend.app.services.auth import AuthService
 from backend.tests.conftest import IsolatedPostgres, database_settings

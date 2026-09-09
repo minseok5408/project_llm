@@ -7,8 +7,8 @@ import pytest
 
 from backend.app.config import Settings
 from backend.app.db import DBSession
+from backend.app.llm.providers.mock import MockProvider
 from backend.app.main import create_app
-from backend.app.providers import MockProvider
 from backend.app.schemas import ProviderStatus
 
 

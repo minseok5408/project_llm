@@ -7,10 +7,10 @@ from uuid import UUID
 import pytest
 from sqlalchemy import select
 
+from backend.app.context.compaction import SUMMARY_PROMPT
+from backend.app.context.service import latest_summary
+from backend.app.llm.protocol import ProviderDelta
 from backend.app.models import Conversation, ConversationCompaction, GenerationRun, Message
-from backend.app.providers import ProviderDelta
-from backend.app.services.compaction_service import latest_summary
-from backend.app.services.context_compaction import SUMMARY_PROMPT
 from backend.tests.test_generations import Account, Harness, balance, snapshot
 from backend.tests.test_generations import harness as harness
 
@@ -500,3 +500,37 @@ async def test_insufficient_budget_after_summary_keeps_checkpoint_without_chargi
     assert (await attempts(harness, harness.member))[0].status == "completed"
     # 유효한 요약은 다음에 재사용할 수 있게 남기고 답변을 시작하지 않는다.
     assert sum(event.kind == "error" for event in result.events) == 1
+
+
+async def test_108_turns_repeated_compaction_preserves_every_original_and_boundary(
+    harness: Harness,
+) -> None:
+    """모의 요약의 의미가 아니라 실제 DB 경계·중복·누락·원문 불변성을 검사한다."""
+    provider = install_provider(harness)
+    enable_compaction(harness)
+    await seed(harness, harness.system, count=108)
+    originals = await message_rows(harness, harness.system)
+    summaries = await attempts(harness, harness.system)
+    summary, through = await checkpoint(harness, harness.system)
+    assert len(originals) == 216
+    assert [row[1] for row in originals] == list(range(1, 217))
+    assert len(summaries) >= 2
+    assert all(item.status == "completed" for item in summaries)
+    assert [item.through_sequence for item in summaries] == sorted(
+        {item.through_sequence for item in summaries}
+    )
+    assert summary and through == summaries[-1].through_sequence
+    summarized_questions = [
+        record["user"]
+        for call in provider.summary_calls
+        for message in call[1:]
+        if "user" in (record := json.loads(message["content"]))
+    ]
+    assert summarized_questions == [
+        row[3] for row in originals if row[2] == "user" and row[1] <= through
+    ]
+    assert len(provider.answer_calls) == 108
+    # 마지막 요청은 요약되지 않은 과거 원문과 현재 사용자 발언을 각각 한 번만 포함한다.
+    assert [message["content"] for message in provider.answer_calls[-1][1:]] == [
+        row[3] for row in originals if through < row[1] < 216
+    ]
