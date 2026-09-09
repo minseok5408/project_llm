@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""임시 로컬 PostgreSQL에서 마이그레이션과 전체 백엔드 테스트를 실행한다."""
+"""임시 로컬 PostgreSQL에서 마이그레이션과 백엔드 테스트를 실행하고 pytest 인자를 전달한다."""
 
 import os
 import re
@@ -18,7 +18,7 @@ class CheckFailed(Exception):
     """테스트 사전 조건 확인이나 하위 프로세스 실행에 실패했음을 나타낸다."""
 
 
-def main() -> int:
+def main(pytest_args: list[str] | None = None) -> int:
     docker = shutil.which("docker")
     if docker is None:
         print(
@@ -147,8 +147,12 @@ def main() -> int:
                 [sys.executable, "-m", "alembic", *operation],
                 label=f"Alembic {' '.join(operation)}",
             )
-        print("Running all backend tests, including PostgreSQL integration tests...", flush=True)
-        run([sys.executable, "-m", "pytest"], label="Backend tests", timeout=300)
+        print("Running backend tests, including PostgreSQL integration tests...", flush=True)
+        run(
+            [sys.executable, "-m", "pytest", *(pytest_args or [])],
+            label="Backend tests",
+            timeout=300,
+        )
     except KeyboardInterrupt:
         print("\nInterrupted; removing the temporary test database.", file=sys.stderr)
         exit_code = 130
@@ -177,4 +181,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

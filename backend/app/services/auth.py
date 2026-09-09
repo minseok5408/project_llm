@@ -233,16 +233,6 @@ class AuthService:
         )
         await self.session.flush()
 
-    @logged
-    async def logout_all(self, raw_token: str) -> None:
-        authenticated = await self.authenticate(raw_token)
-        await self.session.scalar(
-            select(User).where(User.id == authenticated.user.id).with_for_update()
-        )
-        # 잠금을 기다리는 사이 비밀번호 변경으로 철회된 쿠키는 다시 허용하지 않는다.
-        authenticated = await self.authenticate(raw_token)
-        await self._revoke_user_sessions(authenticated.user.id)
-
     async def _revoke_user_sessions(self, user_id: UUID) -> None:
         await self.session.execute(
             update(AuthSession)

@@ -306,14 +306,7 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       for (const cookie of cookies) headers.append('Set-Cookie', cookie);
       return Response.json({ ok: true }, { headers });
     };
-    for (const action of [
-      'config',
-      'me',
-      'login',
-      'signup',
-      'logout',
-      'logout-all',
-    ]) {
+    for (const action of ['config', 'me', 'login', 'signup', 'logout']) {
       const method = ['config', 'me'].includes(action) ? 'GET' : 'POST';
       const response = await (method === 'GET' ? GET : POST)(
         new Request(`${LAN_ORIGIN}/api/v1/auth/${action}`, {
@@ -328,13 +321,23 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
     }
   });
 
+  it('제거된 모든 기기 로그아웃 경로는 upstream에 전달하지 않는다', async () => {
+    const response = await POST(
+      new Request(`${LAN_ORIGIN}/api/v1/auth/logout-all`, {
+        method: 'POST',
+        headers: { Origin: LAN_ORIGIN, 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+    );
+    assert.equal(response.status, 404);
+  });
+
   it('POST의 누락 또는 다른 Origin을 JSON 본문과 관계없이 차단한다', async () => {
     for (const path of [
       '/api/chat',
       '/api/v1/auth/login',
       '/api/v1/auth/signup',
       '/api/v1/auth/logout',
-      '/api/v1/auth/logout-all',
       '/api/v1/generations/d8402e8f-040a-4385-91cc-238d0c65d355/regenerate',
     ]) {
       for (const origin of [

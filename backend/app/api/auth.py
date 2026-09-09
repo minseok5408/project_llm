@@ -318,11 +318,3 @@ async def logout(request: Request, auth: WriteAuth) -> Response:
         await service.logout(auth.raw_token)
         await session.commit()
     return clear_cookie(request)
-
-
-@router.post("/logout-all")
-async def logout_all(request: Request, auth: WriteAuth) -> Response:
-    async with auth_service(request) as (service, session):
-        await service.logout_all(auth.raw_token)
-        await session.commit()
-    return clear_cookie(request)

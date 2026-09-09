@@ -17,7 +17,7 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import exists, func, select, tuple_, update
+from sqlalchemy import exists, func, or_, select, tuple_, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -354,19 +354,37 @@ class Repository:
         limit: int = 30,
         cursor: str | None = None,
         status: str = "active",
+        q: str | None = None,
     ) -> Page[Conversation]:
         """최근 메시지 시각과 UUID의 내림차순으로 조회하며 커서는 권한을 부여하지 않는다."""
         workspace_id, limit = identifier(workspace_id), page_limit(limit)
-        if status not in ("active", "archived"):
+        if status not in ("active", "archived", "all"):
             raise InvalidInput("대화 상태가 올바르지 않습니다.")
+        if q is not None:
+            if not isinstance(q, str):
+                raise InvalidInput("검색어는 문자열이어야 합니다.")
+            q = required_text(q, 200, "검색어") if q.strip() else None
         position = None if cursor is None else decode_cursor(cursor)
         await self._require_membership(workspace_id)
         statement = select(Conversation).where(
             Conversation.workspace_id == workspace_id,
-            Conversation.status == status,
             Conversation.deleted_at.is_(None),
             self._access_exists(workspace_id),
         )
+        if status != "all":
+            statement = statement.where(Conversation.status == status)
+        if q:
+            # 부분검색의 와일드카드는 리터럴로 처리하고 메시지 수에 따른 중복 결과를 막는다.
+            matching_message = exists(
+                select(Message.id).where(
+                    Message.workspace_id == Conversation.workspace_id,
+                    Message.conversation_id == Conversation.id,
+                    Message.content.icontains(q, autoescape=True),
+                )
+            )
+            statement = statement.where(
+                or_(Conversation.title.icontains(q, autoescape=True), matching_message)
+            )
         if position is not None:
             statement = statement.where(
                 tuple_(Conversation.last_message_at, Conversation.id) < tuple_(*position)

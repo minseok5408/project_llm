@@ -8,6 +8,15 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import {
+  ArrowDown,
+  BookOpen,
+  CodeXml,
+  Compass,
+  PanelLeft,
+  PencilLine,
+  SquarePen,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -18,20 +27,44 @@ import { ChatScrollFollow, preserveScrollAnchor } from '../scroll/chat-scroll';
 import { ChatMessageView } from './chat-message-view';
 import { ChatComposer } from './chat-composer';
 import { ConversationSidebar } from './conversation-sidebar';
+import { ModelInfoMenu } from './model-info-menu';
+import { ConversationSearchDialog } from './conversation-search-dialog';
 import { TokenUsagePanel } from '../../usage/components/token-usage-panel';
 import { NetworkModeStore } from '../../network/state/network-mode-store.ts';
 import { NetworkModeSwitch } from '../../network/components/network-mode-switch.tsx';
+import { ThemeSetting } from '../../preferences/components/theme-setting.tsx';
 
 const MODEL_ID = 'mlx-community/Qwen3.8-27B-4bit';
 const suggestions = [
-  '냉장고에 달걀과 두부가 있어. 간단한 저녁 메뉴를 추천해줘',
-  '하루 30분씩 꾸준히 공부할 수 있는 일주일 계획을 짜줘',
-  'Python 비동기 코드를 쉽게 설명해줘',
+  {
+    label: '글 다듬기',
+    prompt:
+      '내가 쓴 글을 자연스럽고 명확하게 다듬어줘. 글을 보내면 핵심 의미를 유지하면서 고쳐줘.',
+    icon: PencilLine,
+    color: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    label: '공부 계획 세우기',
+    prompt: '하루 30분씩 꾸준히 공부할 수 있는 일주일 계획을 짜줘',
+    icon: BookOpen,
+    color: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    label: '코드 이해하기',
+    prompt: 'Python 비동기 코드를 쉽게 설명해줘',
+    icon: CodeXml,
+    color: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    label: '아이디어 찾기',
+    prompt:
+      '이번 주말에 해볼 만한 작은 프로젝트 아이디어를 함께 생각해줘. 먼저 내 관심사를 물어봐줘.',
+    icon: Compass,
+    color: 'text-violet-600 dark:text-violet-400',
+  },
 ];
 const pathId = () =>
   window.location.pathname.match(/^\/chat\/([0-9a-f-]{36})\/?$/i)?.[1] ?? null;
-const number = (value: number | null | undefined) =>
-  value == null ? '—' : value.toLocaleString();
 type WebMcpContext = {
   registerTool: (
     tool: {
@@ -94,6 +127,9 @@ function Workbench({
     store.getServerSnapshot,
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchReturnFocus = useRef<HTMLElement | null>(null);
   const [thinking, setThinking] = useState(false);
   const [maxTokens, setMaxTokens] = useState(1024);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
@@ -137,6 +173,85 @@ function Workbench({
     !noBalance &&
     Boolean(state.workspaceId) &&
     state.selected?.status !== 'archived';
+  const welcome = !state.loading && state.messages.length === 0;
+  const networkBusy =
+    networkState.loading || networkState.saving || networkState.checking;
+  const networkOnline =
+    !networkState.error &&
+    !networkState.value?.local_only &&
+    networkState.value?.mode === 'online';
+  const searchLabel = networkBusy
+    ? '연결 확인 중'
+    : !networkOnline
+      ? '로컬 모드'
+      : networkState.webSearch === 'auto'
+        ? '자동 검색'
+        : networkState.webSearch === 'on'
+          ? '웹검색 켜짐'
+          : '웹검색 꺼짐';
+
+  const openSearch = useCallback(() => {
+    searchReturnFocus.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setSearchOpen(true);
+  }, []);
+
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'k' &&
+        !event.isComposing &&
+        !document.querySelector('[data-slot="dialog-content"][data-open]')
+      ) {
+        event.preventDefault();
+        openSearch();
+      }
+    };
+    window.addEventListener('keydown', shortcut);
+    return () => window.removeEventListener('keydown', shortcut);
+  }, [openSearch]);
+
+  useEffect(() => {
+    // 설정 메뉴만 외부 클릭과 키보드로 닫고 대화의 접힌 원문은 유지한다.
+    const openMenus = () =>
+      document.querySelectorAll<HTMLDetailsElement>(
+        'details[data-chat-menu][open]',
+      );
+    const closeOutside = (event: Event) => {
+      for (const menu of openMenus()) {
+        if (event.target instanceof Node && !menu.contains(event.target))
+          menu.open = false;
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      // 모달이 열린 동안에는 모달의 닫기와 초점 복귀가 Escape를 처리한다.
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        document.querySelector('[data-slot="dialog-content"][data-open]')
+      )
+        return;
+      const menus = [...openMenus()];
+      if (menus.length) {
+        const focusedMenu = menus.find((menu) =>
+          menu.contains(document.activeElement),
+        );
+        for (const menu of menus) menu.open = false;
+        focusedMenu?.querySelector('summary')?.focus();
+      } else setSidebarOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('focusin', closeOutside);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('focusin', closeOutside);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
 
   useEffect(() => {
     void networkStore.initialize();
@@ -380,22 +495,27 @@ function Workbench({
   };
 
   return (
-    <main className="relative flex h-[100dvh] w-full overflow-hidden bg-background">
+    <main className="chat-shell relative isolate flex h-[100dvh] w-full overflow-hidden bg-background">
       {sidebarOpen && (
         <button
           type="button"
           aria-label="대화 목록 닫기"
           onClick={() => setSidebarOpen(false)}
-          className="absolute inset-0 z-20 bg-black/65 md:hidden"
+          className="absolute inset-0 z-20 bg-black/30 backdrop-blur-[2px] md:hidden"
         />
       )}
       <ConversationSidebar
         state={state}
         sidebarOpen={sidebarOpen}
+        desktopCollapsed={desktopCollapsed}
         isGenerating={isGenerating}
-        onClose={() => setSidebarOpen(false)}
+        onClose={() => {
+          setSidebarOpen(false);
+          setDesktopCollapsed(true);
+        }}
         onNewChat={newChat}
-        onWorkspaceChange={(id) => void store.setWorkspace(id)}
+        onSearch={openSearch}
+        onExpand={() => setDesktopCollapsed(false)}
         onFilterChange={(filter) => void store.setFilter(filter)}
         onOpenConversation={open}
         onRename={(conversation) => {
@@ -420,67 +540,75 @@ function Workbench({
         <TokenUsagePanel
           usage={state.usage}
           email={session.user.email}
+          userName={userName}
+          collapsed={desktopCollapsed}
+          onExpand={() => setDesktopCollapsed(false)}
           logoutPending={logoutPending}
           onRefresh={() => void store.refreshUsage()}
-          onLogoutAll={() => void logout(true)}
+          onLogout={() => void logout()}
+          generalSettings={<ThemeSetting />}
+          networkSettings={
+            <NetworkModeSwitch
+              state={networkState}
+              onLocalOnly={(value) => void networkStore.setLocalOnly(value)}
+              onCheck={() => void networkStore.check()}
+              onWebSearch={networkStore.setWebSearch}
+            />
+          }
         />
       </ConversationSidebar>
+      <ConversationSearchDialog
+        key={state.workspaceId}
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        workspaceId={state.workspaceId}
+        request={request}
+        returnFocus={searchReturnFocus}
+        onOpenConversation={open}
+        onNewChat={newChat}
+      />
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="shrink-0 border-b border-border bg-card">
-          <div className="flex min-h-14 items-center gap-2 px-3 sm:px-5">
+        <header className="relative z-10 flex h-16 shrink-0 items-center justify-between gap-2 bg-background/95 px-3 sm:h-[72px] sm:px-5">
+          <div className="flex min-w-0 items-center gap-1">
             <Button
               variant="ghost"
-              size="sm"
-              className="rounded-none md:hidden"
+              size="icon"
+              className="size-10 rounded-xl md:hidden"
               aria-label="대화 목록 열기"
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen(true)}
             >
-              ☰
+              <PanelLeft className="size-5" aria-hidden="true" />
             </Button>
-            <h1 className="min-w-0 flex-1 truncate text-sm">
-              {state.selected?.title ?? '새 채팅'}
-            </h1>
-            <span className="hidden max-w-28 truncate text-xs text-muted-foreground sm:block">
-              {userName}
+            <h1 className="sr-only">{state.selected?.title ?? '새 채팅'}</h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="hidden items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground sm:inline-flex">
+              <span
+                className={cn(
+                  'size-1.5 rounded-full',
+                  networkBusy ? 'bg-muted-foreground/40' : 'bg-foreground/50',
+                )}
+                aria-hidden="true"
+              />
+              {searchLabel}
             </span>
-            {session.user.platform_role === 'system' && (
-              <span className="border border-primary/40 px-1.5 py-0.5 text-[10px] text-primary">
-                system
-              </span>
-            )}
             <Button
               variant="ghost"
-              size="sm"
-              disabled={logoutPending}
-              onClick={() => void logout()}
-              className="h-8 rounded-none px-2 text-xs"
+              size="icon"
+              className="size-10 rounded-xl md:hidden"
+              aria-label="새 채팅"
+              title="새 채팅"
+              onClick={newChat}
             >
-              로그아웃
+              <SquarePen className="size-5" aria-hidden="true" />
             </Button>
           </div>
-          <div className="flex min-h-8 items-center gap-4 border-t border-border/70 px-4 text-[11px] text-muted-foreground">
-            <span className={runtime.ready ? 'text-primary' : 'text-amber-300'}>
-              ● {runtime.backend}
-            </span>
-            <span>API: {runtime.online ? '연결됨' : '확인 중'}</span>
-            <span className="ml-auto">
-              {state.usage?.unlimited
-                ? '토큰 한도 없음'
-                : `남은 토큰 ${number(state.usage?.remaining_tokens)}`}
-            </span>
-          </div>
-          <NetworkModeSwitch
-            state={networkState}
-            onLocalOnly={(value) => void networkStore.setLocalOnly(value)}
-            onCheck={() => void networkStore.check()}
-            onWebSearch={networkStore.setWebSearch}
-          />
         </header>
         {(authError || state.error) && (
           <div
             role="alert"
-            className="flex shrink-0 items-start gap-3 border-b border-rose-400/30 bg-rose-400/5 px-4 py-3 text-sm leading-6 text-rose-200"
+            className="mx-3 mb-2 flex shrink-0 items-start gap-3 rounded-2xl bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive sm:mx-5"
           >
             <span className="flex-1">{authError || state.error}</span>
             <Button
@@ -490,7 +618,7 @@ function Workbench({
                 store.clearError();
                 void store.refresh();
               }}
-              className="h-7 shrink-0 rounded-none text-xs"
+              className="h-8 shrink-0 rounded-lg text-xs"
             >
               다시 확인
             </Button>
@@ -498,7 +626,7 @@ function Workbench({
         )}
         {titleDraft !== null && (
           <form
-            className="flex shrink-0 gap-2 border-b border-border p-3"
+            className="mx-3 mb-2 flex shrink-0 gap-2 rounded-2xl bg-muted p-3 sm:mx-5"
             onSubmit={(event) => {
               event.preventDefault();
               void store
@@ -513,20 +641,20 @@ function Workbench({
               value={titleDraft}
               maxLength={300}
               onChange={(event) => setTitleDraft(event.target.value)}
-              className="h-9 rounded-none"
+              className="h-10 rounded-xl bg-background"
               required
             />
             <Button
               type="submit"
               disabled={!titleDraft.trim()}
-              className="h-9 rounded-none"
+              className="h-10 rounded-xl"
             >
               저장
             </Button>
             <Button
               type="button"
               variant="ghost"
-              className="h-9 rounded-none"
+              className="h-10 rounded-xl"
               onClick={() => setTitleDraft(null)}
             >
               취소
@@ -534,11 +662,11 @@ function Workbench({
           </form>
         )}
         {confirmDelete && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-rose-400/30 bg-rose-400/5 p-3 text-sm">
+          <div className="mx-3 mb-2 flex shrink-0 flex-wrap items-center gap-2 rounded-2xl bg-destructive/5 p-3 text-sm sm:mx-5">
             <span className="flex-1">이 대화를 목록에서 삭제할까요?</span>
             <Button
               variant="outline"
-              className="rounded-none text-rose-200"
+              className="rounded-xl text-destructive"
               onClick={() => {
                 void store.deleteConversation();
                 setConfirmDelete(false);
@@ -548,212 +676,229 @@ function Workbench({
             </Button>
             <Button
               variant="ghost"
-              className="rounded-none"
+              className="rounded-xl"
               onClick={() => setConfirmDelete(false)}
             >
               취소
             </Button>
           </div>
         )}
-        <div className="relative min-h-0 flex-1">
-          {/* 키보드로 긴 대화를 탐색할 수 있도록 스크롤 영역에 초점을 허용한다. */}
-          {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-          <section
-            ref={scrollViewport}
-            /* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex */
-            tabIndex={0}
-            aria-label="대화 메시지"
-            className="h-full overflow-y-auto overscroll-contain"
-            style={{ overflowAnchor: 'none' }}
-            onScroll={(event) => {
-              const viewport = event.currentTarget;
-              scrollFollow.onScroll(viewport);
-              const anchor = historyAnchor.current;
-              const element = anchor
-                ? messageElements.current.get(anchor.messageId)
-                : null;
-              if (anchor && element)
-                anchor.offset =
-                  element.getBoundingClientRect().top -
-                  viewport.getBoundingClientRect().top;
-              setShowLatest(scrollFollow.hasNewerContent(viewport));
-            }}
-            onWheel={(event) => {
-              if (event.deltaY < 0) pauseFollowing();
-            }}
-            onTouchStart={(event) => {
-              touchY.current = event.touches[0]?.clientY ?? null;
-            }}
-            onTouchMove={(event) => {
-              const currentY = event.touches[0]?.clientY;
-              if (
-                currentY != null &&
-                touchY.current != null &&
-                currentY > touchY.current
-              )
-                pauseFollowing();
-              touchY.current = currentY ?? null;
-            }}
-            onTouchEnd={() => {
-              touchY.current = null;
-            }}
-            onKeyDown={(event) => {
-              if (
-                ['ArrowUp', 'PageUp', 'Home'].includes(event.key) ||
-                (event.key === ' ' && event.shiftKey)
-              )
-                pauseFollowing();
-            }}
+        <div
+          className={cn(
+            'flex min-h-0 flex-1 flex-col',
+            welcome && 'overflow-y-auto',
+          )}
+        >
+          {welcome && (
+            <div className="min-h-8 flex-[0.85]" aria-hidden="true" />
+          )}
+          <div
+            className={cn('relative min-h-0', welcome ? 'shrink-0' : 'flex-1')}
           >
-            <div ref={scrollContent} className="mx-auto w-full max-w-5xl">
-              {state.loading ? (
-                <p
-                  className="px-6 py-12 text-sm text-muted-foreground"
-                  aria-live="polite"
-                >
-                  저장된 대화를 불러오는 중...
-                </p>
-              ) : state.messages.length === 0 ? (
-                <section
-                  className="px-5 py-12 sm:px-10 sm:py-16"
-                  aria-label="대화 시작 화면"
-                >
-                  <p className="text-sm text-primary">
-                    Project LLM{' '}
-                    <span className="text-muted-foreground">
-                      / local workspace
-                    </span>
-                  </p>
-                  <p className="mt-4 text-sm leading-7 text-muted-foreground">
-                    Apple Silicon에서 실행되는 로컬 LLM 채팅
-                    <br />
-                    {runtime.detail}
-                  </p>
-                  <div className="mt-10 border-l-2 border-primary pl-5">
-                    <h2 className="break-words text-lg">
-                      <span className="text-primary">{userName}</span>
-                      <span className="text-muted-foreground">:~/chat$ </span>
-                      대화를 시작하세요.
-                    </h2>
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      대화는 계정에 저장되어 다른 기기에서도 이어갈 수 있습니다.
-                    </p>
-                  </div>
-                  <div className="mt-8 border-y border-border">
-                    {suggestions.map((suggestion, index) => (
-                      <button
-                        type="button"
-                        key={suggestion}
-                        disabled={!canSend}
-                        onClick={() => {
-                          store.setDraft(suggestion);
-                          void send(suggestion);
-                        }}
-                        className="flex w-full gap-3 border-b border-border/60 px-3 py-4 text-left text-sm leading-6 hover:bg-primary/5 disabled:opacity-50 last:border-b-0"
-                      >
-                        <span className="text-muted-foreground">
-                          0{index + 1}
-                        </span>
-                        <span className="text-primary">$</span>
-                        <span>{suggestion}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <>
-                  {state.messageCursor && (
-                    <div className="border-b border-border p-3 text-center">
-                      <Button
-                        variant="ghost"
-                        className="rounded-none text-xs"
-                        disabled={loadingOlder}
-                        onClick={() => void loadOlder()}
-                      >
-                        {loadingOlder
-                          ? '이전 메시지 불러오는 중...'
-                          : '이전 메시지 불러오기'}
-                      </Button>
-                    </div>
-                  )}
-                  {state.messages.map((message) => {
-                    const streaming =
-                      generation?.assistant_message_id === message.id;
-                    return (
-                      <article
-                        key={message.id}
-                        ref={(element) => {
-                          if (element)
-                            messageElements.current.set(message.id, element);
-                          else messageElements.current.delete(message.id);
-                        }}
-                        className={cn(
-                          'border-b border-border px-5 py-6 sm:px-10',
-                          message.role === 'user' && 'bg-sky-300/[0.025]',
-                        )}
-                      >
-                        <ChatMessageView
-                          message={message}
-                          userName={userName}
-                          streaming={streaming}
-                          cancelling={Boolean(cancelling)}
-                          compacting={compacting}
-                          searching={searching}
-                          search={streaming ? generation?.search : undefined}
-                          reducedMotion={reducedMotion}
-                          lengthLimited={
-                            message.finish_reason === 'length' ||
-                            state.lengthLimitedMessageIds.includes(message.id)
-                          }
-                          canSend={canSend}
-                          onRegenerate={() => {
-                            if (!canSend) return;
-                            followLatest();
-                            void store.regenerate(message.id, {
-                              thinking,
-                              max_tokens: maxTokens,
-                            });
-                          }}
-                        />
-                      </article>
-                    );
-                  })}
-                </>
+            {/* 키보드로 긴 대화를 탐색할 수 있도록 스크롤 영역에 초점을 허용한다. */}
+            {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+            <section
+              ref={scrollViewport}
+              /* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex */
+              tabIndex={0}
+              aria-label="대화 메시지"
+              className={cn(
+                'overflow-y-auto overscroll-contain',
+                !welcome && 'h-full',
               )}
-            </div>
-          </section>
-          {showLatest && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="absolute bottom-4 right-4 h-9 rounded-none border border-border shadow-lg"
-              onClick={followLatest}
+              style={{ overflowAnchor: 'none' }}
+              onScroll={(event) => {
+                const viewport = event.currentTarget;
+                scrollFollow.onScroll(viewport);
+                const anchor = historyAnchor.current;
+                const element = anchor
+                  ? messageElements.current.get(anchor.messageId)
+                  : null;
+                if (anchor && element)
+                  anchor.offset =
+                    element.getBoundingClientRect().top -
+                    viewport.getBoundingClientRect().top;
+                setShowLatest(scrollFollow.hasNewerContent(viewport));
+              }}
+              onWheel={(event) => {
+                if (event.deltaY < 0) pauseFollowing();
+              }}
+              onTouchStart={(event) => {
+                touchY.current = event.touches[0]?.clientY ?? null;
+              }}
+              onTouchMove={(event) => {
+                const currentY = event.touches[0]?.clientY;
+                if (
+                  currentY != null &&
+                  touchY.current != null &&
+                  currentY > touchY.current
+                )
+                  pauseFollowing();
+                touchY.current = currentY ?? null;
+              }}
+              onTouchEnd={() => {
+                touchY.current = null;
+              }}
+              onKeyDown={(event) => {
+                if (
+                  ['ArrowUp', 'PageUp', 'Home'].includes(event.key) ||
+                  (event.key === ' ' && event.shiftKey)
+                )
+                  pauseFollowing();
+              }}
             >
-              최신 답변으로 ↓
-            </Button>
+              <div ref={scrollContent} className="mx-auto w-full max-w-3xl">
+                {state.loading ? (
+                  <output className="block px-6 py-12">
+                    <p className="mb-8 text-sm text-muted-foreground">
+                      저장된 대화를 불러오는 중...
+                    </p>
+                    <div
+                      className="space-y-3 motion-safe:animate-pulse"
+                      aria-hidden="true"
+                    >
+                      <div className="ml-auto mb-10 h-12 w-2/3 rounded-3xl bg-muted" />
+                      <div className="h-3 w-2/5 rounded-full bg-muted" />
+                      <div className="h-3 w-full rounded-full bg-muted" />
+                      <div className="h-3 w-4/5 rounded-full bg-muted" />
+                    </div>
+                  </output>
+                ) : state.messages.length === 0 ? (
+                  <section
+                    className="chat-welcome px-5 pb-7 pt-6 text-center sm:pb-9"
+                    aria-label="대화 시작 화면"
+                  >
+                    <p className="mb-4 text-[13px] font-medium tracking-wide text-muted-foreground">
+                      나의 AI 작업 공간
+                    </p>
+                    <h2 className="text-[28px] font-semibold leading-[1.3] tracking-[-0.045em] sm:text-[38px]">
+                      무엇을 도와드릴까요?
+                    </h2>
+                    <p className="mt-4 text-sm leading-6 text-muted-foreground sm:text-[15px]">
+                      작은 질문부터 새로운 아이디어까지, 편하게 이야기하세요.
+                    </p>
+                  </section>
+                ) : (
+                  <>
+                    {state.messageCursor && (
+                      <div className="p-4 text-center">
+                        <Button
+                          variant="ghost"
+                          className="rounded-full text-xs"
+                          disabled={loadingOlder}
+                          onClick={() => void loadOlder()}
+                        >
+                          {loadingOlder
+                            ? '이전 메시지 불러오는 중...'
+                            : '이전 메시지 불러오기'}
+                        </Button>
+                      </div>
+                    )}
+                    {state.messages.map((message) => {
+                      const streaming =
+                        generation?.assistant_message_id === message.id;
+                      return (
+                        <article
+                          key={message.id}
+                          ref={(element) => {
+                            if (element)
+                              messageElements.current.set(message.id, element);
+                            else messageElements.current.delete(message.id);
+                          }}
+                          className="px-5 py-5 first:pt-8 last:pb-8 sm:px-6 sm:py-7"
+                        >
+                          <ChatMessageView
+                            message={message}
+                            userName={userName}
+                            streaming={streaming}
+                            cancelling={Boolean(cancelling)}
+                            compacting={compacting}
+                            searching={searching}
+                            search={streaming ? generation?.search : undefined}
+                            reducedMotion={reducedMotion}
+                            lengthLimited={
+                              message.finish_reason === 'length' ||
+                              state.lengthLimitedMessageIds.includes(message.id)
+                            }
+                            canSend={canSend}
+                            onRegenerate={() => {
+                              if (!canSend) return;
+                              followLatest();
+                              void store.regenerate(message.id, {
+                                thinking,
+                                max_tokens: maxTokens,
+                              });
+                            }}
+                          />
+                        </article>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </section>
+            {showLatest && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="최신 답변으로 이동"
+                title="최신 답변으로 이동"
+                className="absolute bottom-3 left-1/2 size-10 -translate-x-1/2 rounded-full border-border/70 bg-background/95 shadow-md backdrop-blur-sm"
+                onClick={followLatest}
+              >
+                <ArrowDown className="size-4" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
+          <ChatComposer
+            state={state}
+            userName={userName}
+            isGenerating={isGenerating}
+            cancelling={Boolean(cancelling)}
+            compacting={compacting}
+            searching={searching}
+            noBalance={Boolean(noBalance)}
+            logoutPending={logoutPending}
+            canSend={canSend}
+            thinking={thinking}
+            maxTokens={maxTokens}
+            onReconnect={store.reconnect}
+            onCancel={() => void store.cancel()}
+            onSend={() => void send()}
+            onDraftChange={(value) => store.setDraft(value)}
+            onThinkingChange={setThinking}
+            onMaxTokensChange={setMaxTokens}
+          />
+          {welcome && (
+            <>
+              <section
+                className="chat-welcome mx-auto flex w-full max-w-3xl shrink-0 flex-wrap justify-center gap-2 px-5 pt-3 sm:gap-2.5"
+                aria-label="예시 질문"
+              >
+                {suggestions.map(({ label, prompt, icon: Icon, color }) => (
+                  <button
+                    type="button"
+                    key={label}
+                    disabled={!canSend}
+                    onClick={() => {
+                      store.setDraft(prompt);
+                      document.getElementById('chat-message-input')?.focus();
+                    }}
+                    className="flex min-h-11 items-center gap-2 rounded-full border border-border/80 bg-background px-3.5 py-2.5 text-xs text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-40 sm:px-4"
+                  >
+                    <Icon className={cn('size-4', color)} aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </section>
+              <div className="min-h-12 flex-1" aria-hidden="true" />
+            </>
           )}
         </div>
-        <ChatComposer
-          state={state}
-          userName={userName}
-          model={runtime.model}
-          isGenerating={isGenerating}
-          cancelling={Boolean(cancelling)}
-          compacting={compacting}
-          searching={searching}
-          noBalance={Boolean(noBalance)}
-          logoutPending={logoutPending}
-          canSend={canSend}
-          thinking={thinking}
-          maxTokens={maxTokens}
-          onReconnect={store.reconnect}
-          onCancel={() => void store.cancel()}
-          onSend={() => void send()}
-          onDraftChange={(value) => store.setDraft(value)}
-          onThinkingChange={setThinking}
-          onMaxTokensChange={setMaxTokens}
-        />
+        <div className="relative z-10 flex shrink-0 justify-end px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-5">
+          <ModelInfoMenu runtime={runtime} />
+        </div>
       </section>
     </main>
   );

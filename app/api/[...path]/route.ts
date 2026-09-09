@@ -8,7 +8,6 @@ const API_METHODS: Readonly<Record<string, readonly string[]>> = {
   '/api/v1/auth/login': ['POST'],
   '/api/v1/auth/signup': ['POST'],
   '/api/v1/auth/logout': ['POST'],
-  '/api/v1/auth/logout-all': ['POST'],
   '/api/v1/workspaces': ['GET'],
   '/api/v1/conversations': ['GET', 'POST'],
   '/api/v1/usage': ['GET'],

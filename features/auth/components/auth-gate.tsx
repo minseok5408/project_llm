@@ -17,6 +17,14 @@ export type AuthenticatedProps = {
   authError?: string;
 };
 
+function AuthBrand() {
+  return (
+    <p className="mb-10 text-center text-xl font-semibold tracking-tight text-foreground">
+      Project LLM
+    </p>
+  );
+}
+
 function AuthForm({
   store,
   message,
@@ -90,12 +98,12 @@ function AuthForm({
   };
 
   return (
-    <div className="w-full max-w-md border border-border bg-card p-6 sm:p-8">
-      <p className="mb-6 text-sm text-primary">$ Project LLM</p>
-      <h1 className="text-2xl font-medium">
+    <div className="w-full max-w-[400px]">
+      <AuthBrand />
+      <h1 className="text-center text-[30px] font-semibold tracking-tight">
         {mode === 'signup' ? '회원가입' : '로그인'}
       </h1>
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+      <p className="mt-3 text-center text-sm leading-6 text-muted-foreground">
         {mode === 'signup'
           ? '내 계정을 만들고 로컬 AI와 대화를 시작하세요.'
           : '내 계정으로 로컬 AI 작업 공간에 접속하세요.'}
@@ -105,13 +113,13 @@ function AuthForm({
           : '로그인은 접속한 브라우저에서 24시간 유지됩니다.'}
       </p>
       {mode === 'signup' && (
-        <p className="mt-3 text-sm text-primary">
+        <p className="mt-4 rounded-xl bg-muted px-4 py-3 text-center text-sm text-foreground">
           매월 20,000토큰이 무료로 제공됩니다.
         </p>
       )}
       {signupOpen && (
         <fieldset
-          className="mt-6 grid grid-cols-2 border border-border"
+          className="mt-7 grid grid-cols-2 gap-1 rounded-full bg-muted p-1"
           aria-label="계정 접속 방식"
         >
           {(['login', 'signup'] as const).map((value) => (
@@ -119,7 +127,7 @@ function AuthForm({
               key={value}
               type="button"
               variant={mode === value ? 'default' : 'ghost'}
-              className="rounded-none"
+              className="h-10 rounded-full"
               disabled={busy}
               aria-pressed={mode === value}
               onClick={() => {
@@ -134,9 +142,9 @@ function AuthForm({
           ))}
         </fieldset>
       )}
-      <form className="mt-6 space-y-4" onSubmit={(event) => void submit(event)}>
+      <form className="mt-7 space-y-5" onSubmit={(event) => void submit(event)}>
         <div className="space-y-2">
-          <label htmlFor="auth-email" className="text-sm">
+          <label htmlFor="auth-email" className="text-sm font-medium">
             이메일
           </label>
           <Input
@@ -149,12 +157,12 @@ function AuthForm({
             required
             maxLength={320}
             disabled={busy}
-            className="h-11 rounded-none"
+            className="h-12 rounded-xl bg-background px-4 shadow-none"
           />
         </div>
         {mode === 'signup' && (
           <div className="space-y-2">
-            <label htmlFor="auth-name" className="text-sm">
+            <label htmlFor="auth-name" className="text-sm font-medium">
               사용자 이름
             </label>
             <Input
@@ -167,12 +175,12 @@ function AuthForm({
               required
               maxLength={200}
               disabled={busy}
-              className="h-11 rounded-none"
+              className="h-12 rounded-xl bg-background px-4 shadow-none"
             />
           </div>
         )}
         <div className="space-y-2">
-          <label htmlFor="auth-password" className="text-sm">
+          <label htmlFor="auth-password" className="text-sm font-medium">
             비밀번호
           </label>
           <Input
@@ -189,7 +197,7 @@ function AuthForm({
             maxLength={32}
             disabled={busy}
             aria-describedby="auth-password-hint"
-            className="h-11 rounded-none"
+            className="h-12 rounded-xl bg-background px-4 shadow-none"
           />
           <p id="auth-password-hint" className="text-xs text-muted-foreground">
             8~32자
@@ -197,7 +205,10 @@ function AuthForm({
         </div>
         {mode === 'signup' && (
           <div className="space-y-2">
-            <label htmlFor="auth-password-confirmation" className="text-sm">
+            <label
+              htmlFor="auth-password-confirmation"
+              className="text-sm font-medium"
+            >
               비밀번호 확인
             </label>
             <Input
@@ -212,7 +223,7 @@ function AuthForm({
               minLength={8}
               maxLength={32}
               disabled={busy}
-              className="h-11 rounded-none"
+              className="h-12 rounded-xl bg-background px-4 shadow-none"
             />
           </div>
         )}
@@ -221,8 +232,8 @@ function AuthForm({
             role={error ? 'alert' : 'status'}
             className={
               error
-                ? 'text-sm leading-6 text-rose-300'
-                : 'text-sm leading-6 text-muted-foreground'
+                ? 'rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive'
+                : 'rounded-xl bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground'
             }
           >
             {error || message}
@@ -231,7 +242,7 @@ function AuthForm({
         <Button
           type="submit"
           disabled={busy}
-          className="h-11 w-full rounded-none"
+          className="h-12 w-full rounded-full text-sm font-medium"
         >
           {busy
             ? '확인 중...'
@@ -241,7 +252,7 @@ function AuthForm({
         </Button>
       </form>
       {!signupOpen && (
-        <p className="mt-5 text-xs leading-5 text-muted-foreground">
+        <p className="mt-6 text-center text-xs leading-5 text-muted-foreground">
           신규 가입은 현재 닫혀 있습니다. 계정이 없으면 관리자에게 문의하세요.
         </p>
       )}
@@ -287,16 +298,22 @@ export function AuthGate({
   }
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-10">
+    <main className="flex min-h-[100dvh] items-center justify-center bg-background px-6 py-12 text-foreground sm:py-16">
       {state.status === 'anonymous' ? (
         <AuthForm store={store} message={state.message} />
       ) : (
         <section
-          className="w-full max-w-md border border-border bg-card p-8"
+          className="w-full max-w-[400px] text-center"
           aria-live="polite"
         >
-          <p className="mb-6 text-sm text-primary">$ Project LLM</p>
-          <h1 className="text-xl">
+          <AuthBrand />
+          {state.status === 'checking' && (
+            <span
+              aria-hidden="true"
+              className="mx-auto mb-6 block size-6 animate-spin rounded-full border-2 border-border border-t-foreground motion-reduce:animate-none"
+            />
+          )}
+          <h1 className="text-2xl font-semibold tracking-tight">
             {state.status === 'checking' ? '로그인 확인 중' : '서버 연결 확인'}
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -306,7 +323,7 @@ export function AuthGate({
           </p>
           {state.status === 'unavailable' && (
             <Button
-              className="mt-6 rounded-none"
+              className="mt-7 h-12 w-full rounded-full"
               onClick={() => void store.verify()}
             >
               다시 시도

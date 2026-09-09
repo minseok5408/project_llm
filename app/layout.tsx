@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { ThemeSync } from '@/features/preferences/components/theme-setting';
+import { THEME_BOOTSTRAP_SCRIPT } from '@/features/preferences/state/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -12,8 +14,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
-      <body>{children}</body>
+    <html lang="ko" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
+      <body>
+        <ThemeSync />
+        {children}
+      </body>
     </html>
   );
 }

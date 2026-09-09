@@ -219,21 +219,18 @@ export class AuthSessionStore {
     return response;
   };
 
-  logout = async (all = false) => {
+  logout = async () => {
     if (this.state.status !== 'authenticated' || this.state.busy) return;
     this.publish({ ...this.state, busy: true, message: undefined });
     const session = this.state.session;
     const sessionController = this.sessionController;
     try {
-      const response = await this.request(
-        `/api/v1/auth/${all ? 'logout-all' : 'logout'}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-          signal: AbortSignal.timeout(15_000),
-        },
-      );
+      const response = await this.request('/api/v1/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(15_000),
+      });
       if (response.status === 401) return;
       if (!response.ok)
         throw new Error('로그아웃에 실패했습니다. 다시 시도해 주세요.');

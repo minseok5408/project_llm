@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Check, CircleAlert, Copy } from 'lucide-react';
 import { copyText } from './clipboard.ts';
 
 export function CopyButton({
@@ -31,16 +32,32 @@ export function CopyButton({
     timer.current = setTimeout(() => setStatus('idle'), 3000);
   };
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
+    <span className="inline-flex max-w-full flex-wrap items-center gap-2">
       <button
         type="button"
         disabled={disabled || !text}
         onClick={() => void copy()}
-        className="min-h-8 px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
+        aria-label={label}
+        title={status === 'copied' ? '복사됨' : label}
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"
       >
-        {label}
+        {status === 'copied' ? (
+          <Check className="size-4" strokeWidth={1.7} aria-hidden="true" />
+        ) : status === 'failed' ? (
+          <CircleAlert
+            className="size-4"
+            strokeWidth={1.7}
+            aria-hidden="true"
+          />
+        ) : (
+          <Copy className="size-4" strokeWidth={1.7} aria-hidden="true" />
+        )}
       </button>
-      <output className="text-[11px] text-muted-foreground">
+      <output
+        className={
+          status === 'failed' ? 'text-xs text-muted-foreground' : 'sr-only'
+        }
+      >
         {status === 'copied'
           ? '복사됨'
           : status === 'failed'

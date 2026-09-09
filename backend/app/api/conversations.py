@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,9 +56,15 @@ class EmptyPayload(BaseModel):
 class ConversationQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     workspace_id: UUID
-    status: Literal["active", "archived"] = "active"
+    status: Literal["active", "archived", "all"] = "active"
+    q: str | None = Field(default=None, max_length=200)
     cursor: str | None = Field(default=None, min_length=1, max_length=512)
     limit: int = Field(default=30, ge=1, le=100)
+
+    @field_validator("q", mode="before")
+    @classmethod
+    def trim_search_query(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
 
 class MessageQuery(BaseModel):

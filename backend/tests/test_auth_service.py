@@ -126,7 +126,9 @@ async def test_login_errors_do_not_reveal_missing_disabled_or_wrong_password_acc
     assert "member@example.com" not in caplog.text
 
 
-async def test_logout_revokes_one_session_and_logout_all_revokes_every_session(schema_database):
+async def test_logout_revokes_only_the_current_session_and_preserves_other_sessions(
+    schema_database,
+):
     first = await signup(schema_database)
     second = await login(schema_database)
     assert first.raw_token != second.raw_token
@@ -142,10 +144,11 @@ async def test_logout_revokes_one_session_and_logout_all_revokes_every_session(s
     third = await login(schema_database)
     async with schema_database.session() as session:
         await AuthService(session).authenticate(second.raw_token)
-        await AuthService(session).logout_all(second.raw_token)
+        await AuthService(session).logout(second.raw_token)
         await session.commit()
     await assert_invalid(schema_database, second.raw_token)
-    await assert_invalid(schema_database, third.raw_token)
+    async with schema_database.session() as session:
+        await AuthService(session).authenticate(third.raw_token)
 
 
 async def test_password_setup_preserves_system_role_and_signup_cannot_take_existing_account(

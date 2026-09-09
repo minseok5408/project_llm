@@ -59,6 +59,11 @@ async def test_auth_database_failure_is_closed_and_health_and_config_remain_publ
     assert response.status_code == 503
 
 
+async def test_removed_logout_all_endpoint_is_not_available(closed_client):
+    response = await closed_client.post("/api/v1/auth/logout-all", json={}, headers=WRITE_HEADERS)
+    assert response.status_code == 404
+
+
 async def test_auth_rejects_untrusted_origins_and_never_echoes_invalid_password(
     closed_client, caplog
 ):
@@ -259,7 +264,7 @@ async def test_login_errors_are_generic_and_rate_limited(auth_client, caplog):
 
 
 @pytest.mark.postgres
-async def test_csrf_is_bound_to_current_session_and_logout_all_revokes_other_devices(auth_client):
+async def test_csrf_is_bound_to_current_session_and_logout_preserves_other_devices(auth_client):
     client, app = auth_client
     signup = await client.post("/api/v1/auth/signup", json=SIGNUP)
     csrf = signup.json()["csrf_token"]
@@ -279,14 +284,8 @@ async def test_csrf_is_bound_to_current_session_and_logout_all_revokes_other_dev
         assert "Max-Age=0" in logout.headers["set-cookie"]
         assert (await client.get("/api/v1/auth/me")).status_code == 401
         assert (await other.get("/api/v1/auth/me")).status_code == 200
-        login = await client.post(
-            "/api/v1/auth/login", json={"email": SIGNUP["email"], "password": PASSWORD}
-        )
-        logout_all = await client.post(
-            "/api/v1/auth/logout-all", headers={"X-CSRF-Token": login.json()["csrf_token"]}
-        )
-        assert logout_all.status_code == 204
-        assert (await client.get("/api/v1/auth/me")).status_code == 401
+        other_logout = await other.post("/api/v1/auth/logout", headers={"X-CSRF-Token": other_csrf})
+        assert other_logout.status_code == 204
         assert (await other.get("/api/v1/auth/me")).status_code == 401
 
 

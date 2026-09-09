@@ -20,6 +20,8 @@ const { ConversationSidebar } =
   await import('../features/chat/components/conversation-sidebar.tsx');
 const { TokenUsagePanel } =
   await import('../features/usage/components/token-usage-panel.tsx');
+const { AccountSettingsContent, TokenUsageDetails } =
+  await import('../features/preferences/components/account-settings-dialog.tsx');
 const { default: Home } = await import('../app/page.tsx');
 const { default: ConversationPage } =
   await import('../app/chat/[conversationId]/page.tsx');
@@ -68,7 +70,6 @@ describe('기능별 화면 연결', () => {
         generation: { status: 'running' },
       },
       userName: '김민석',
-      model: '로컬 모델',
       isGenerating: true,
       cancelling: false,
       compacting: false,
@@ -94,7 +95,12 @@ describe('기능별 화면 연결', () => {
     assert.match(cancelling, /중단 확인 중/);
     assert.match(cancelling, /다음 질문/);
     assert.doesNotMatch(cancelling, /<textarea\b[^>]*disabled=""/);
-    assert.match(cancelling, /<button\b[^>]*type="submit"[^>]*disabled=""/);
+    assert.match(
+      cancelling,
+      /<button\b[^>]*disabled=""[^>]*aria-label="중단 중\.\.\."/,
+    );
+    assert.doesNotMatch(cancelling, /<button\b[^>]*type="submit"/);
+    assert.match(searching, /aria-label="답변 중단"/);
     assert.match(cancelling, /김민석/);
   });
 
@@ -116,8 +122,6 @@ describe('기능별 화면 연결', () => {
         ConversationSidebar,
         {
           state: {
-            workspaceId: 'workspace',
-            workspaces: [{ id: 'workspace', name: '내 작업 공간' }],
             filter: 'active',
             selected,
             listLoading: false,
@@ -127,8 +131,9 @@ describe('기능별 화면 연결', () => {
           sidebarOpen: false,
           isGenerating: true,
           onClose() {},
+          onExpand() {},
           onNewChat() {},
-          onWorkspaceChange() {},
+          onSearch() {},
           onFilterChange() {},
           onOpenConversation() {},
           onRename() {},
@@ -153,12 +158,11 @@ describe('기능별 화면 연결', () => {
     assert.match(rendered, /계정 사용량/);
   });
 
-  it('토큰 패널은 월 무료 한도와 시스템 계정의 무제한 표시를 구분한다', () => {
+  it('사용량 설정은 월 무료 한도와 시스템 계정의 무제한 표시를 구분한다', () => {
     const props = {
       email: 'member@example.com',
       logoutPending: false,
       onRefresh() {},
-      onLogoutAll() {},
       usage: {
         unlimited: false,
         remaining_tokens: 19000,
@@ -168,12 +172,17 @@ describe('기능별 화면 연결', () => {
         ends_at: '2026-09-30T15:00:00Z',
       },
     };
-    const member = renderToStaticMarkup(createElement(TokenUsagePanel, props));
-    assert.match(member, /19,000 남음/);
-    assert.match(member, /무료 · 매월 20,000토큰/);
+    const member = renderToStaticMarkup(
+      createElement(TokenUsageDetails, props),
+    );
+    assert.match(member, /남은 토큰/);
+    assert.match(member, /19,000/);
+    assert.match(member, /무료 플랜/);
+    assert.match(member, /월 한도/);
+    assert.match(member, /20,000/);
     assert.match(member, /한국시간/);
     const system = renderToStaticMarkup(
-      createElement(TokenUsagePanel, {
+      createElement(TokenUsageDetails, {
         ...props,
         usage: { unlimited: true, used_tokens: 1000 },
       }),
@@ -181,6 +190,62 @@ describe('기능별 화면 연결', () => {
     assert.match(system, /한도 없음/);
     assert.match(system, /1,000/);
     assert.doesNotMatch(system, /월 한도|기간 한도|무료 · 매월/);
+  });
+
+  it('계정 메뉴와 일반·검색 설정은 토큰 수치를 렌더링하지 않고 사용량 탭에서만 표시한다', () => {
+    const props = {
+      email: 'member@example.com',
+      userName: '김민석',
+      logoutPending: false,
+      onRefresh() {},
+      onLogout() {},
+      generalSettings: createElement('p', null, '화면 테마 선택'),
+      networkSettings: createElement('p', null, '검색 방식 선택'),
+      usage: {
+        unlimited: false,
+        remaining_tokens: 19000,
+        used_tokens: 1000,
+        token_limit: 20000,
+        budget_source: 'free_monthly',
+      },
+    };
+    const account = renderToStaticMarkup(createElement(TokenUsagePanel, props));
+    assert.match(account, /김민석/);
+    assert.match(account, /무료 플랜/);
+    assert.match(account, /aria-haspopup="dialog"/);
+    assert.match(account, /로그아웃/);
+    assert.doesNotMatch(account, /모든 기기/);
+    assert.doesNotMatch(
+      account,
+      /19,000|1,000|20,000|남은 토큰|화면 테마 선택|검색 방식 선택/,
+    );
+    const general = renderToStaticMarkup(
+      createElement(AccountSettingsContent, props),
+    );
+    assert.match(general, /화면 테마 선택/);
+    assert.doesNotMatch(
+      general,
+      /19,000|1,000|20,000|남은 토큰|검색 방식 선택/,
+    );
+    const network = renderToStaticMarkup(
+      createElement(AccountSettingsContent, {
+        ...props,
+        initialTab: 'network',
+      }),
+    );
+    assert.match(network, /검색 방식 선택/);
+    assert.doesNotMatch(
+      network,
+      /19,000|1,000|20,000|남은 토큰|화면 테마 선택/,
+    );
+    const usage = renderToStaticMarkup(
+      createElement(AccountSettingsContent, { ...props, initialTab: 'usage' }),
+    );
+    assert.match(usage, /19,000/);
+    assert.match(usage, /1,000/);
+    assert.match(usage, /20,000/);
+    assert.match(usage, /role="tabpanel"/);
+    assert.doesNotMatch(usage, /화면 테마 선택|검색 방식 선택/);
   });
 });
 
@@ -309,7 +374,7 @@ describe('답변 작업과 이전 버전 표시', () => {
     const rendered = message({
       message: { ...base.message, is_current: false },
     });
-    assert.match(rendered, /<details><summary/);
+    assert.match(rendered, /<details\b[^>]*><summary/);
     assert.match(rendered, /이전 답변/);
     assert.match(rendered, /<strong>답변<\/strong>/);
     assert.equal(rendered.includes('<details open'), false);
@@ -357,10 +422,10 @@ describe('검색 상태와 출처의 안전한 표시', () => {
 
   it('출처는 기본 접힘이며 펼친 목록에는 번호와 제목 링크만 표시한다', () => {
     const result = render(search);
-    assert.match(result, /<details><summary\b/);
+    assert.match(result, /<details\b[^>]*><summary\b/);
     assert.doesNotMatch(result, /<details[^>]*\bopen(?:\s|=|>)/);
     assert.match(result, /참고한 검색 자료/);
-    assert.match(result, /\(1\)<\/summary>/);
+    assert.match(result, /참고한 검색 자료 \(1\)/);
     assert.match(result, /\[1\]/);
     assert.match(result, /href="https:\/\/example.com\/docs"/);
     assert.match(result, /공식 문서/);
@@ -424,7 +489,7 @@ describe('검색 상태와 출처의 안전한 표시', () => {
       searching: true,
       search: { ...search, status: 'searching', sources: [] },
     });
-    assert.match(active, /\[검색 중\]/);
+    assert.match(active, />검색 중<\/p>/);
     assert.match(active, /웹에서 참고 자료를 찾는 중/);
     assert.doesNotMatch(active, /다시 생성/);
     const stopped = message({
@@ -432,11 +497,11 @@ describe('검색 상태와 출처의 안전한 표시', () => {
       searching: true,
       cancelling: true,
     });
-    assert.match(stopped, /\[중단 중\]/);
+    assert.match(stopped, />중단 중<\/p>/);
     const old = message({
       message: { ...base.message, is_current: false, search },
     });
-    assert.match(old, /<details><summary/);
+    assert.match(old, /<details\b[^>]*><summary/);
     assert.match(old, /공식 문서/);
   });
 });

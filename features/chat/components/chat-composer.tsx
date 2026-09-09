@@ -1,5 +1,14 @@
 'use client';
 
+import {
+  ArrowUp,
+  Brain,
+  ChevronDown,
+  LoaderCircle,
+  RotateCcw,
+  SlidersHorizontal,
+  Square,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,7 +17,6 @@ import type { ChatState } from '../state/chat-store.ts';
 export function ChatComposer({
   state,
   userName,
-  model,
   isGenerating,
   cancelling,
   compacting,
@@ -30,7 +38,6 @@ export function ChatComposer({
     'stream' | 'selected' | 'sending' | 'draft' | 'generation'
   >;
   userName: string;
-  model: string;
   isGenerating: boolean;
   cancelling: boolean;
   compacting: boolean;
@@ -49,11 +56,11 @@ export function ChatComposer({
 }) {
   const generation = state.generation;
   return (
-    <footer className="shrink-0 border-t border-border bg-card">
-      <div className="mx-auto max-w-5xl px-3 py-3 sm:px-6 sm:py-4">
+    <footer className="relative z-10 shrink-0 bg-background pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto w-full max-w-3xl px-4 pb-3 pt-3 sm:px-6 sm:pb-4">
         {isGenerating && (
           <div
-            className="mb-3 flex flex-wrap items-center gap-2 text-xs text-amber-200"
+            className="mb-2 flex min-h-7 flex-wrap items-center gap-2 px-3 text-xs text-muted-foreground"
             aria-live="polite"
           >
             <span className="flex-1">
@@ -73,32 +80,25 @@ export function ChatComposer({
             </span>
             {state.stream === 'paused' && (
               <Button
+                type="button"
                 size="sm"
-                variant="outline"
+                variant="ghost"
                 onClick={onReconnect}
-                className="h-7 rounded-none text-xs"
+                className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
               >
+                <RotateCcw className="size-3.5" aria-hidden="true" />
                 다시 연결
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={Boolean(cancelling)}
-              onClick={onCancel}
-              className="h-7 rounded-none border-rose-400/40 text-xs text-rose-200"
-            >
-              {cancelling ? '중단 중...' : '답변 중단'}
-            </Button>
           </div>
         )}
         {noBalance && (
-          <p className="mb-3 text-xs leading-5 text-amber-200">
+          <p className="mb-3 rounded-2xl bg-muted px-4 py-3 text-xs leading-5 text-muted-foreground">
             사용할 수 있는 토큰을 모두 사용했습니다.
           </p>
         )}
         {state.selected?.status === 'archived' && (
-          <p className="mb-3 text-xs text-muted-foreground">
+          <p className="mb-3 px-1 text-xs text-muted-foreground">
             보관된 대화입니다. 대화 목록에서 복원하면 이어갈 수 있습니다.
           </p>
         )}
@@ -107,26 +107,63 @@ export function ChatComposer({
             event.preventDefault();
             onSend();
           }}
-          className="border border-border bg-background focus-within:border-primary/70"
+          className="rounded-[28px] border border-border/80 bg-card p-2 shadow-[0_2px_12px_rgb(0_0_0/0.04)] transition-[border-color,box-shadow] focus-within:border-foreground/20 focus-within:shadow-[0_3px_18px_rgb(0_0_0/0.06)] sm:p-2.5 dark:border-border/40 dark:bg-muted/80 dark:shadow-none"
         >
-          <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
-            <span className="min-w-0 truncate">
-              <span className="text-primary">{userName}</span>:~/chat$ compose
-              --stdin
-            </span>
-            <details className="relative shrink-0">
-              <summary className="cursor-pointer text-primary">
-                생성 설정
+          <label htmlFor="chat-message-input" className="sr-only">
+            {userName}님의 메시지
+          </label>
+          <Textarea
+            id="chat-message-input"
+            value={state.draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                onSend();
+              }
+            }}
+            rows={2}
+            maxLength={100000}
+            disabled={
+              (isGenerating && !cancelling) || state.sending || logoutPending
+            }
+            placeholder="무엇이든 물어보세요"
+            aria-label="채팅 메시지"
+            className="max-h-[min(12rem,25dvh)] min-h-16 resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-base leading-6 shadow-none placeholder:text-muted-foreground/85 focus-visible:ring-0 disabled:bg-transparent disabled:opacity-70 md:text-base dark:bg-transparent"
+          />
+          <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1">
+            <details className="group/settings relative min-w-0" data-chat-menu>
+              <summary className="flex min-h-9 w-fit cursor-pointer list-none items-center gap-2 rounded-full px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring group-open/settings:bg-accent group-open/settings:text-foreground [&::-webkit-details-marker]:hidden">
+                <SlidersHorizontal
+                  className="size-4"
+                  strokeWidth={1.7}
+                  aria-hidden="true"
+                />
+                <span>생성 설정</span>
+                <ChevronDown
+                  className="size-3.5 transition-transform group-open/settings:rotate-180"
+                  aria-hidden="true"
+                />
               </summary>
-              <div className="absolute bottom-7 right-0 z-10 w-72 border border-border bg-card p-4 shadow-xl">
-                <p className="break-all text-xs leading-5">
-                  {state.selected?.model ?? model}
-                </p>
-                <p className="mt-2 text-[10px]">
-                  MLX / 4비트 · 문맥 32,768 토큰
-                </p>
-                <div className="mt-4 flex items-center justify-between">
-                  <label htmlFor="thinking">깊이 생각하기</label>
+              <div className="absolute bottom-12 left-0 z-20 max-h-[45dvh] w-80 max-w-[calc(100vw-3.5rem)] overflow-y-auto rounded-2xl border border-border/80 bg-popover p-4 text-sm shadow-[0_8px_32px_rgb(0_0_0/0.12)]">
+                <div className="border-b border-border/70 pb-3">
+                  <p className="font-medium text-popover-foreground">
+                    답변 설정
+                  </p>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <label htmlFor="thinking" className="flex items-center gap-2">
+                    <Brain
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.7}
+                      aria-hidden="true"
+                    />
+                    깊이 생각하기
+                  </label>
                   <Switch
                     id="thinking"
                     checked={thinking}
@@ -134,17 +171,20 @@ export function ChatComposer({
                     disabled={isGenerating || state.sending}
                   />
                 </div>
-                <p className="mt-4">최대 출력 토큰</p>
-                <div className="mt-2 grid grid-cols-3 gap-1">
+                <p className="mt-4 text-xs text-muted-foreground">
+                  최대 출력 토큰
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-muted/80 p-1">
                   {[512, 1024, 2048].map((value) => (
                     <Button
                       type="button"
                       key={value}
                       size="sm"
-                      variant={value === maxTokens ? 'secondary' : 'ghost'}
+                      variant={value === maxTokens ? 'outline' : 'ghost'}
+                      aria-pressed={value === maxTokens}
                       disabled={isGenerating || state.sending}
                       onClick={() => onMaxTokensChange(value)}
-                      className="h-8 rounded-none text-xs"
+                      className="h-8 rounded-lg text-xs tabular-nums"
                     >
                       {value}
                     </Button>
@@ -152,46 +192,60 @@ export function ChatComposer({
                 </div>
               </div>
             </details>
-          </div>
-          <div className="flex items-end">
-            <span className="py-3 pl-3 text-primary" aria-hidden="true">
-              &gt;_
-            </span>
-            <Textarea
-              value={state.draft}
-              onChange={(event) => onDraftChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (
-                  event.key === 'Enter' &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  onSend();
-                }
-              }}
-              rows={2}
-              maxLength={100000}
-              disabled={
-                (isGenerating && !cancelling) || state.sending || logoutPending
-              }
-              placeholder="명령 또는 질문 입력..."
-              aria-label="채팅 메시지"
-              className="max-h-40 min-h-[3.5rem] resize-none rounded-none border-0 bg-transparent px-3 py-3 text-base leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
-            />
-            <Button
-              type="submit"
-              disabled={!state.draft.trim() || !canSend}
-              className="m-2 h-9 rounded-none px-4 text-xs"
-            >
-              {state.sending ? '접수 중...' : '전송 ↵'}
-            </Button>
+            {thinking && (
+              <span className="mr-auto hidden items-center gap-1.5 rounded-full px-2 py-1.5 text-xs text-muted-foreground sm:inline-flex">
+                <Brain
+                  className="size-3.5"
+                  strokeWidth={1.7}
+                  aria-hidden="true"
+                />
+                깊이 생각하기
+              </span>
+            )}
+            {isGenerating ? (
+              <Button
+                type="button"
+                size="icon"
+                disabled={Boolean(cancelling)}
+                onClick={onCancel}
+                aria-label={cancelling ? '중단 중...' : '답변 중단'}
+                title={cancelling ? '중단 중...' : '답변 중단'}
+                className="size-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/85"
+              >
+                <Square className="size-3.5 fill-current" aria-hidden="true" />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!state.draft.trim() || !canSend}
+                aria-label={state.sending ? '접수 중...' : '메시지 전송'}
+                title={state.sending ? '접수 중...' : '메시지 전송'}
+                className="size-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/85 disabled:bg-muted disabled:text-muted-foreground/70 disabled:opacity-100 dark:disabled:bg-foreground/15"
+              >
+                {state.sending ? (
+                  <LoaderCircle
+                    className="size-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <ArrowUp
+                    className="size-5"
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                  />
+                )}
+              </Button>
+            )}
           </div>
         </form>
-        <div className="mt-2 flex flex-wrap justify-between gap-2 text-[10px] text-muted-foreground">
-          <span>Enter: 전송 · Shift+Enter: 줄바꿈</span>
-          <span>답변이 끝나거나 중단된 뒤 확인된 사용량만 차감합니다.</span>
-        </div>
+        <p className="mt-3 hidden text-center text-[11px] leading-4 text-muted-foreground sm:block">
+          Enter로 전송{' '}
+          <span className="mx-1.5" aria-hidden="true">
+            ·
+          </span>{' '}
+          Shift+Enter로 줄바꿈
+        </p>
       </div>
     </footer>
   );

@@ -242,9 +242,11 @@ describe('메모리 기반 로그인 상태', { concurrency: false }, () => {
     globalThis.fetch = async () => Response.json(session());
     await store.verify();
     const signals = [];
+    const requests = [];
     globalThis.fetch = async (url, init) => {
       signals.push(init.signal);
-      if (url === '/api/v1/auth/logout-all') {
+      requests.push(url);
+      if (url === '/api/v1/auth/logout') {
         assert.equal(init.method, 'POST');
         assert.equal(
           new Headers(init.headers).get('x-csrf-token'),
@@ -258,7 +260,8 @@ describe('메모리 기반 로그인 상태', { concurrency: false }, () => {
     stop.abort();
     assert.equal(signals[0].aborted, true);
     await store.request('/api/chat', { method: 'POST' });
-    await store.logout(true);
+    await store.logout();
+    assert.equal(requests.at(-1), '/api/v1/auth/logout');
     assert.equal(store.getSnapshot().status, 'anonymous');
     assert.ok(signals.every((signal) => signal.aborted));
   });

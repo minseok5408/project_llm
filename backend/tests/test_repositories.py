@@ -339,6 +339,131 @@ async def test_conversation_cursor_has_no_gaps_with_tied_dates_and_empty_convers
             await repository.list_conversations(account.workspace.id, cursor="not-a-valid-cursor")
 
 
+async def test_conversation_search_matches_title_and_body_with_status_and_access_scope(
+    schema_database: Database, account
+) -> None:
+    outsider = await make_account(schema_database, "search-outsider@example.com")
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user.id)
+        title_match = await repository.create_conversation(
+            account.workspace.id, title="한글 Recipe 제목", model="test-model"
+        )
+        body_match = await repository.create_conversation(
+            account.workspace.id, title="다른 제목", model="test-model"
+        )
+        deleted = await repository.create_conversation(
+            account.workspace.id, title="삭제한 Recipe", model="test-model"
+        )
+        for conversation in (body_match, deleted):
+            await repository.append_message(
+                account.workspace.id, conversation.id, role="assistant", content="recipe 본문"
+            )
+        await repository.update_conversation(account.workspace.id, body_match.id, status="archived")
+        await repository.soft_delete_conversation(account.workspace.id, deleted.id)
+        await Repository(session, outsider.user.id).create_conversation(
+            outsider.workspace.id, title="외부 Recipe", model="test-model"
+        )
+        await session.commit()
+
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user.id)
+        active = await repository.list_conversations(account.workspace.id, q=" recipe ")
+        assert [row.id for row in active.items] == [title_match.id]
+        archived = await repository.list_conversations(
+            account.workspace.id, q="recipe", status="archived"
+        )
+        assert [row.id for row in archived.items] == [body_match.id]
+        all_statuses = await repository.list_conversations(
+            account.workspace.id, q="RECIPE", status="all"
+        )
+        assert {row.id for row in all_statuses.items} == {title_match.id, body_match.id}
+        korean = await repository.list_conversations(account.workspace.id, q="한글")
+        assert [row.id for row in korean.items] == [title_match.id]
+        for q in (None, "", " \n\t "):
+            recent = await repository.list_conversations(account.workspace.id, q=q)
+            assert [row.id for row in recent.items] == [title_match.id]
+        for q in ("x" * 201, "\x00", 123):
+            with pytest.raises(InvalidInput):
+                await repository.list_conversations(account.workspace.id, q=q)
+        with pytest.raises(AccessDenied):
+            await repository.list_conversations(outsider.workspace.id, q="recipe", status="all")
+
+
+async def test_conversation_search_treats_wildcards_and_sql_syntax_as_literal_text(
+    schema_database: Database, account
+) -> None:
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user.id)
+        matches = {}
+        for literal in ("%", "_", "/"):
+            title = await repository.create_conversation(
+                account.workspace.id, title=f"제목 {literal} 리터럴", model="test-model"
+            )
+            body = await repository.create_conversation(
+                account.workspace.id, title="본문에서 검색", model="test-model"
+            )
+            await repository.append_message(
+                account.workspace.id, body.id, role="user", content=f"본문 {literal} 리터럴"
+            )
+            matches[literal] = {title.id, body.id}
+        await repository.create_conversation(
+            account.workspace.id, title="리터럴 없는 일반 대화", model="test-model"
+        )
+        await session.commit()
+
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user.id)
+        for literal, expected in matches.items():
+            page = await repository.list_conversations(account.workspace.id, q=literal)
+            assert {row.id for row in page.items} == expected
+        injection = await repository.list_conversations(account.workspace.id, q="' OR TRUE --")
+        assert injection.items == []
+
+
+async def test_conversation_search_pages_without_duplicates_from_multiple_matching_messages(
+    schema_database: Database, account
+) -> None:
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user.id)
+        expected = []
+        for index in range(7):
+            match = await repository.create_conversation(
+                account.workspace.id, title=f"검색 대상 {index}", model="test-model"
+            )
+            for role in ("user", "assistant"):
+                await repository.append_message(
+                    account.workspace.id, match.id, role=role, content="반복 검색 대상"
+                )
+            if index % 2:
+                await repository.update_conversation(
+                    account.workspace.id, match.id, status="archived"
+                )
+            expected.append(match.id)
+            await repository.create_conversation(
+                account.workspace.id, title="무관한 대화", model="test-model"
+            )
+        await session.execute(
+            update(Conversation).values(last_message_at=datetime(2026, 9, 9, tzinfo=UTC))
+        )
+        await session.commit()
+
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user.id)
+        seen = []
+        cursor = None
+        for _ in range(4):
+            page = await repository.list_conversations(
+                account.workspace.id, q="검색 대상", status="all", limit=2, cursor=cursor
+            )
+            seen.extend(row.id for row in page.items)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+        assert cursor is None
+        assert seen == sorted(expected, reverse=True)
+        assert len(seen) == len(set(seen)) == 7
+
+
 async def test_message_before_cursor_returns_chronological_pages(
     schema_database: Database, account
 ) -> None:

@@ -10,16 +10,19 @@ project_llm/
 │   │   ├── components/         # 로그인·회원가입 게이트
 │   │   └── state/              # 24시간 인증 세션
 │   ├── chat/
-│   │   ├── components/         # 작업 화면·사이드바·입력창·메시지
-│   │   ├── state/              # 대화·생성 복원과 API 상태
+│   │   ├── components/         # 작업 화면·사이드바·채팅 검색·입력창·메시지·모델 정보
+│   │   ├── state/              # 대화·검색·생성 복원과 API 상태
 │   │   ├── stream/             # SSE 해석·한글/이모지 표시 대기열
 │   │   └── scroll/             # 사용자 스크롤 우선·이전 메시지 위치 보존
 │   ├── network/
 │   │   ├── components/         # 로컬 모드 선택·검색 출처
 │   │   ├── state/              # 서버 모드·연결 상태·설정 revision
 │   │   └── types.ts            # 모드·검색 자료형
+│   ├── preferences/
+│   │   ├── components/         # 설정 모달·사용량 화면·테마 선택과 동기화
+│   │   └── state/              # 시스템·라이트·다크 설정과 브라우저 저장
 │   └── usage/
-│       ├── components/         # 월 무료·플랜·무제한 사용량 표시
+│       ├── components/         # 계정 메뉴·요금제 표시·설정 모달 연결
 │       └── types.ts            # 토큰 사용량 자료형
 ├── components/
 │   ├── content/                # 공통 Markdown·복사·링크 정책
@@ -111,6 +114,7 @@ project_llm/
 - `features/auth/`: 로그인·회원가입 게이트와 메모리 인증 세션을 관리합니다.
 - `features/chat/`: 작업 화면, 대화 목록·입력창·메시지 컴포넌트와 기존 `state/chat-store.ts`를 둡니다. 이번 이동에서는 대화별 초안 보존이나 전역 작업 상태 같은 새 기능을 추가하지 않습니다.
 - `features/network/`, `features/usage/`: 네트워크 설정·검색 출처와 토큰 사용량 화면을 각각 관리합니다.
+- `features/preferences/`: 브라우저별 화면 테마와 운영체제 변경·탭 간 동기화를 관리합니다. `app/layout.tsx`의 초기 스크립트가 첫 화면 전에 테마를 적용하며 계정·토큰·네트워크 정책과 독립적입니다.
 - `components/content/`: Markdown 렌더링·링크 정책·복사와 HTTP 환경의 복사 대체 처리를 공유합니다.
 - `features/chat/stream/grapheme-typer.ts`, `features/chat/components/streaming-text.tsx`: 받은 답변을 약 10ms 간격의 한글·이모지 묶음으로 표시합니다. 표시 적체를 줄이고 중단 시 표시를 고정하며 모션 감소 설정을 처리합니다. `tests/chat-store.test.mjs`에서 표시 대기열과 중단·완료를 검사합니다.
 - `app/api/[...path]/route.ts`: 개발·빌드 실행 모두에서 브라우저의 같은 출처 API 요청을 내부 FastAPI에 전달합니다. 서버용 `API_BASE_URL`을 사용하고 SSE 응답은 버퍼에 모으지 않고 전달합니다.

@@ -166,6 +166,58 @@ async def test_conversation_crud_restores_messages_and_pages_without_session_lea
         assert response.headers["cache-control"] == "no-store"
 
 
+async def test_conversation_search_query_supports_title_body_archives_and_validation(
+    conversation_client, schema_database
+):
+    client, app, account = conversation_client
+    title_match = await create_conversation(client, account, title="레시피 제목 검색")
+    body_match = await create_conversation(client, account, title="다른 대화")
+    async with schema_database.session() as session:
+        repository = Repository(session, account.user_id)
+        await repository.append_message(
+            account.workspace_id,
+            UUID(body_match["id"]),
+            role="assistant",
+            content="메시지 내용에만 레시피가 있습니다.",
+        )
+        await repository.update_conversation(
+            account.workspace_id, UUID(body_match["id"]), status="archived"
+        )
+        await session.commit()
+
+    path = "/api/v1/conversations"
+    query = {"workspace_id": str(account.workspace_id), "q": "  레시피  "}
+    active = await client.get(path, params=query)
+    assert active.status_code == 200
+    assert [item["id"] for item in active.json()["items"]] == [title_match["id"]]
+    first = await client.get(path, params={**query, "status": "all", "limit": 1})
+    assert first.status_code == 200
+    assert first.headers["cache-control"] == "no-store"
+    assert first.json()["next_cursor"]
+    second = await client.get(
+        path,
+        params={**query, "status": "all", "limit": 1, "cursor": first.json()["next_cursor"]},
+    )
+    assert second.status_code == 200
+    assert {first.json()["items"][0]["id"], second.json()["items"][0]["id"]} == {
+        title_match["id"],
+        body_match["id"],
+    }
+    assert second.json()["next_cursor"] is None
+    for q in ("", " \n\t "):
+        recent = await client.get(path, params={**query, "q": q})
+        assert recent.status_code == 200
+        assert [item["id"] for item in recent.json()["items"]] == [title_match["id"]]
+    for q in ("x" * 201, "\x00"):
+        invalid = await client.get(path, params={**query, "q": q})
+        assert invalid.status_code == 422
+        assert q not in invalid.text
+    boundary = await client.get(path, params={**query, "q": f"  {'x' * 200}  "})
+    assert boundary.status_code == 200
+    assert boundary.json() == {"items": [], "next_cursor": None}
+    assert app.state.database.engine.pool.checkedout() == 0
+
+
 async def test_other_accounts_including_system_cannot_access_unshared_conversations(
     conversation_client, schema_database
 ):
@@ -181,6 +233,11 @@ async def test_other_accounts_including_system_cannot_access_unshared_conversati
             ("PATCH", path, {"json": {"title": "탈취"}}),
             ("DELETE", path, {"json": {}}),
             ("GET", "/api/v1/conversations", {"params": {"workspace_id": str(owner.workspace_id)}}),
+            (
+                "GET",
+                "/api/v1/conversations",
+                {"params": {"workspace_id": str(owner.workspace_id), "q": "제목", "status": "all"}},
+            ),
             ("POST", "/api/v1/conversations", {"json": {"workspace_id": str(owner.workspace_id)}}),
         ]
         for method, url, arguments in requests:
