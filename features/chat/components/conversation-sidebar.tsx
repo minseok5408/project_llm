@@ -81,7 +81,7 @@ export function ConversationSidebar({
         variant="ghost"
         onClick={() => setRecentOpen((open) => !open)}
         aria-expanded={recentOpen}
-        className="h-8 w-full justify-start gap-2 rounded-lg px-3 text-[11px] font-medium text-muted-foreground/80 hover:bg-sidebar-accent"
+        className="h-8 w-full justify-start gap-2 rounded-lg px-3 text-[11px] font-medium text-muted-foreground/80 hover:bg-transparent aria-expanded:bg-transparent aria-expanded:text-muted-foreground/80 dark:hover:bg-transparent"
       >
         최근 채팅
         <ChevronDown
