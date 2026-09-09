@@ -131,7 +131,6 @@ function Workbench({
   const [searchOpen, setSearchOpen] = useState(false);
   const searchReturnFocus = useRef<HTMLElement | null>(null);
   const [thinking, setThinking] = useState(false);
-  const [maxTokens, setMaxTokens] = useState(1024);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -429,7 +428,7 @@ function Workbench({
   const send = async (text = state.draft) => {
     if (!canSend || !text.trim()) return false;
     followLatest();
-    return store.send(text, { thinking, max_tokens: maxTokens });
+    return store.send(text, { thinking });
   };
   useEffect(() => {
     sendRef.current = send;
@@ -821,12 +820,18 @@ function Workbench({
                               state.lengthLimitedMessageIds.includes(message.id)
                             }
                             canSend={canSend}
+                            onContinue={() => {
+                              if (!canSend) return;
+                              followLatest();
+                              void store.continueAnswer(message.id, {
+                                thinking,
+                              });
+                            }}
                             onRegenerate={() => {
                               if (!canSend) return;
                               followLatest();
                               void store.regenerate(message.id, {
                                 thinking,
-                                max_tokens: maxTokens,
                               });
                             }}
                           />
@@ -862,13 +867,11 @@ function Workbench({
             logoutPending={logoutPending}
             canSend={canSend}
             thinking={thinking}
-            maxTokens={maxTokens}
             onReconnect={store.reconnect}
             onCancel={() => void store.cancel()}
             onSend={() => void send()}
             onDraftChange={(value) => store.setDraft(value)}
             onThinkingChange={setThinking}
-            onMaxTokensChange={setMaxTokens}
           />
           {welcome && (
             <>

@@ -25,13 +25,11 @@ export function ChatComposer({
   logoutPending,
   canSend,
   thinking,
-  maxTokens,
   onReconnect,
   onCancel,
   onSend,
   onDraftChange,
   onThinkingChange,
-  onMaxTokensChange,
 }: {
   state: Pick<
     ChatState,
@@ -46,13 +44,11 @@ export function ChatComposer({
   logoutPending: boolean;
   canSend: boolean;
   thinking: boolean;
-  maxTokens: number;
   onReconnect: () => void;
   onCancel: () => void;
   onSend: () => void;
   onDraftChange: (value: string) => void;
   onThinkingChange: (value: boolean) => void;
-  onMaxTokensChange: (value: number) => void;
 }) {
   const generation = state.generation;
   return (
@@ -170,25 +166,6 @@ export function ChatComposer({
                     onCheckedChange={onThinkingChange}
                     disabled={isGenerating || state.sending}
                   />
-                </div>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  최대 출력 토큰
-                </p>
-                <div className="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-muted/80 p-1">
-                  {[512, 1024, 2048].map((value) => (
-                    <Button
-                      type="button"
-                      key={value}
-                      size="sm"
-                      variant={value === maxTokens ? 'outline' : 'ghost'}
-                      aria-pressed={value === maxTokens}
-                      disabled={isGenerating || state.sending}
-                      onClick={() => onMaxTokensChange(value)}
-                      className="h-8 rounded-lg text-xs tabular-nums"
-                    >
-                      {value}
-                    </Button>
-                  ))}
                 </div>
               </div>
             </details>

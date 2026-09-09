@@ -196,11 +196,20 @@ class AdmissionMixin:
             prompt_tokens = await count_context(self.provider, context, options)
         if (
             sum(len(message.content) for message in context) > self.settings.llm_max_history_chars
-            or prompt_tokens + options.max_tokens > self.settings.llm_context_window
+            or prompt_tokens >= self.settings.llm_context_window
         ):
             raise InvalidInput(
-                "최근 답변과 질문이 모델 문맥 한도를 초과합니다. 질문이나 출력 길이를 줄여 주세요."
+                "최근 답변과 질문이 모델 문맥 한도를 초과합니다. "
+                "질문을 줄이거나 새 대화를 시작해 주세요."
             )
+        # 남은 문맥 공간 안에서 출력 상한을 정하고 사용량은 완료 후 정산한다.
+        options = options.model_copy(
+            update={
+                "max_tokens": min(
+                    options.max_tokens, self.settings.llm_context_window - prompt_tokens
+                )
+            }
+        )
         async with self.database.session() as session:
             # 대기열 승인만 직렬화하고 tokenizer·추론 중에는 잠금이나 트랜잭션을 유지하지 않는다.
             await session.execute(

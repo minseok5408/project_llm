@@ -36,6 +36,7 @@ const base = {
   lengthLimited: false,
   canSend: true,
   onRegenerate() {},
+  onContinue() {},
   message: {
     id: 'answer',
     role: 'assistant',
@@ -78,16 +79,15 @@ describe('기능별 화면 연결', () => {
       logoutPending: false,
       canSend: false,
       thinking: false,
-      maxTokens: 1024,
       onReconnect() {},
       onCancel() {},
       onSend() {},
       onDraftChange() {},
       onThinkingChange() {},
-      onMaxTokensChange() {},
     };
     const searching = renderToStaticMarkup(createElement(ChatComposer, props));
     assert.match(searching, /웹에서 참고 자료를 찾는 중/);
+    assert.doesNotMatch(searching, /최대 출력 토큰/);
     assert.match(searching, /<textarea\b[^>]*disabled=""/);
     const cancelling = renderToStaticMarkup(
       createElement(ChatComposer, { ...props, cancelling: true }),
@@ -399,7 +399,23 @@ describe('답변 작업과 이전 버전 표시', () => {
     assert.match(active, /응답을 준비하는 중/);
     assert.equal(active.includes('다시 생성'), false);
     assert.equal(active.includes('답변 복사'), false);
-    assert.match(message({ lengthLimited: true }), /이어서 말해/);
+    assert.match(message({ lengthLimited: true }), /이어서 생성/);
+    assert.doesNotMatch(message(), /이어서 생성/);
+    assert.doesNotMatch(
+      message({ streaming: true, lengthLimited: true }),
+      /이어서 생성/,
+    );
+    assert.doesNotMatch(
+      message({
+        lengthLimited: true,
+        message: { ...base.message, is_current: false },
+      }),
+      /이어서 생성/,
+    );
+    assert.match(
+      message({ lengthLimited: true, canSend: false }),
+      /<button[^>]*disabled=""[^>]*>이어서 생성/,
+    );
   });
 });
 

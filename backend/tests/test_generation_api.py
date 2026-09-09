@@ -370,7 +370,7 @@ async def test_budget_is_checked_before_saving_messages_and_system_still_has_con
     async def measured_count(messages, options):
         await provider.assert_database_available()
         assert len(messages[-1].content) < 10
-        return 1000
+        return app.state.settings.llm_context_window
 
     monkeypatch.setattr(provider, "count_input", measured_count)
     response = await submit(client, conversation)

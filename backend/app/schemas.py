@@ -18,7 +18,7 @@ class ChatMessage(BaseModel):
 class GenerationOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     thinking: bool = False
-    max_tokens: int = Field(default=1_024, ge=1, le=4_096)
+    max_tokens: int = Field(default=4_096, ge=1, le=4_096)
 
 
 class ChatRequest(BaseModel):

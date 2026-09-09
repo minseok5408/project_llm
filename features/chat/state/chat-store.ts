@@ -476,7 +476,8 @@ export class ChatStore {
   };
   send = async (
     content: string,
-    options: { thinking: boolean; max_tokens: number },
+    options: { thinking: boolean; max_tokens?: number },
+    clearDraft = true,
   ) => {
     content = content.trim();
     if (
@@ -516,7 +517,7 @@ export class ChatStore {
         `/api/v1/conversations/${conversation.id}/messages`,
         body,
         view.signal,
-        true,
+        clearDraft,
       );
       return !view.signal.aborted;
     } catch (error) {
@@ -529,9 +530,28 @@ export class ChatStore {
       if (!view.signal.aborted) this.publish({ sending: false });
     }
   };
+  continueAnswer = async (
+    messageId: string,
+    options: { thinking: boolean; max_tokens?: number },
+  ) => {
+    const message = this.state.messages.find((item) => item.id === messageId);
+    if (
+      message?.role !== 'assistant' ||
+      message.is_current === false ||
+      !message.can_regenerate ||
+      (message.finish_reason !== 'length' &&
+        !this.state.lengthLimitedMessageIds.includes(messageId))
+    )
+      return false;
+    return this.send(
+      '직전 답변이 길이 제한으로 끊겼습니다. 앞의 내용을 반복하지 말고 중단된 부분부터 이어서 완성해 주세요.',
+      options,
+      false,
+    );
+  };
   regenerate = async (
     messageId: string,
-    options: { thinking: boolean; max_tokens: number },
+    options: { thinking: boolean; max_tokens?: number },
   ) => {
     const { selected, sending, generation, loading } = this.state;
     const message = this.state.messages.find((item) => item.id === messageId);

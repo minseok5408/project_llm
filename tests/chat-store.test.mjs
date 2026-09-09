@@ -97,6 +97,61 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     return store;
   }
 
+  it('길이 제한 답변을 이어서 생성할 때 서버 기본 한도를 사용하고 초안을 보존한다', async () => {
+    const attempts = [];
+    let finishReason = 'length';
+    let allowed = true;
+    const store = create(async (url, init) => {
+      if (url.includes('/messages?'))
+        return Response.json({
+          items: [
+            {
+              ...message('assistant-1', 2, '중단된 답변'),
+              finish_reason: finishReason,
+              is_current: true,
+              can_regenerate: allowed,
+            },
+          ],
+          next_cursor: null,
+        });
+      if (
+        url === `/api/v1/conversations/${C}/messages` &&
+        init.method === 'POST'
+      ) {
+        attempts.push(JSON.parse(init.body));
+        return Response.json({
+          generation_id: G,
+          assistant_message_id: 'next-answer',
+        });
+      }
+      if (url === `/api/v1/generations/${G}`)
+        return Response.json({ ...generation, status: 'completed' });
+    });
+    await store.initialize(C);
+    store.setDraft('작성 중인 질문');
+    assert.equal(
+      await store.continueAnswer('assistant-1', { thinking: true }),
+      true,
+    );
+    assert.deepEqual(attempts[0].options, { thinking: true });
+    assert.match(attempts[0].content, /중단된 부분부터/);
+    assert.equal(store.getSnapshot().draft, '작성 중인 질문');
+    finishReason = 'stop';
+    await store.initialize(C);
+    assert.equal(
+      await store.continueAnswer('assistant-1', { thinking: false }),
+      false,
+    );
+    finishReason = 'length';
+    allowed = false;
+    await store.initialize(C);
+    assert.equal(
+      await store.continueAnswer('assistant-1', { thinking: false }),
+      false,
+    );
+    assert.equal(attempts.length, 1);
+  });
+
   it('deep link로 DB 메시지와 공간을 복원하고 사용자 한도를 읽는다', async () => {
     const store = create();
     await store.initialize(C);

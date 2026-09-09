@@ -901,3 +901,24 @@ async def test_length_limited_answer_is_kept_for_continue_request(harness: Harne
     assert pending.run.max_output_tokens == 64
     await harness.execute_next()
     assert (await snapshot(harness.database, followup["id"])).run.status == "completed"
+
+
+async def test_default_output_limit_fits_remaining_context(harness: Harness) -> None:
+    class NearlyFullProvider(MockProvider):
+        async def count_input(self, messages, options):
+            return harness.settings.llm_context_window - 700
+
+    harness.service.provider = NearlyFullProvider(harness.settings, delay_seconds=0)
+    options = GenerationOptions(thinking=True)
+    assert options.max_tokens == 4_096
+    key = uuid4()
+    submitted = await harness.submit(options=options, idempotency_key=key)
+    pending = await snapshot(harness.database, submitted["id"])
+    assert pending.run.max_output_tokens == 700
+    assert pending.run.options["max_tokens"] == 700
+    assert (
+        pending.run.prompt_tokens + pending.run.max_output_tokens
+        == harness.settings.llm_context_window
+    )
+    retried = await harness.submit(options=options, idempotency_key=key)
+    assert retried["id"] == submitted["id"]

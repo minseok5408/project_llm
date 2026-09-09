@@ -19,6 +19,7 @@ export function ChatMessageView({
   lengthLimited,
   canSend,
   onRegenerate,
+  onContinue,
 }: {
   message: ChatMessage;
   userName: string;
@@ -31,6 +32,7 @@ export function ChatMessageView({
   lengthLimited: boolean;
   canSend: boolean;
   onRegenerate: () => void;
+  onContinue: () => void;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -104,9 +106,19 @@ export function ChatMessageView({
       </div>
       {isAssistant && <SearchSources search={search ?? message.search} />}
       {!streaming && isAssistant && lengthLimited && (
-        <p className="mt-4 rounded-2xl bg-muted/70 px-4 py-3 text-xs leading-5 text-muted-foreground">
-          길이 제한에 도달했습니다. “이어서 말해”라고 입력하면 이어서 답합니다.
-        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs leading-5 text-muted-foreground">
+          <p>출력 한도에 도달해 답변이 중단되었습니다.</p>
+          {!previous && message.can_regenerate && (
+            <button
+              type="button"
+              disabled={!canSend}
+              onClick={onContinue}
+              className="rounded-lg border border-border px-3 py-1.5 text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"
+            >
+              이어서 생성
+            </button>
+          )}
+        </div>
       )}
       {!streaming && (
         <div
