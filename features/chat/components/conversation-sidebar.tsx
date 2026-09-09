@@ -106,7 +106,7 @@ export function ConversationSidebar({
     >
       <div
         className={cn(
-          'flex h-[72px] shrink-0 items-center gap-0.5 pl-5 pr-3',
+          'flex h-[72px] shrink-0 items-center pl-5 pr-3',
           desktopCollapsed && 'md:justify-center md:px-2',
         )}
       >
@@ -136,29 +136,26 @@ export function ConversationSidebar({
           size="icon"
           onClick={onSearch}
           className={cn(
-            'size-10 rounded-lg p-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+            'size-8 rounded-lg p-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
             desktopCollapsed && 'md:hidden',
           )}
           aria-label="채팅 검색"
           title="채팅 검색"
         >
-          <Search className="size-[18px] translate-x-1.5" aria-hidden="true" />
+          <Search className="size-[18px]" aria-hidden="true" />
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={onClose}
           className={cn(
-            'size-10 rounded-lg p-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+            'size-8 rounded-lg p-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
             desktopCollapsed && 'md:hidden',
           )}
           aria-label="사이드바 접기"
           title="사이드바 접기"
         >
-          <PanelLeftClose
-            className="size-[18px] -translate-x-1.5"
-            aria-hidden="true"
-          />
+          <PanelLeftClose className="size-[18px]" aria-hidden="true" />
         </Button>
       </div>
       <div
