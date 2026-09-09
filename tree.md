@@ -75,6 +75,9 @@ project_llm/
 ├── dist/                       # [생성] 웹 빌드 결과
 ├── .next/                      # [생성] 호환 타입·빌드 데이터
 ├── .vinext/                    # [생성] Vinext 개발 데이터
+├── docs/
+│   ├── development-status.md   # 구현 현황·최근 변경·한계·검증 범위
+│   └── adr/                    # 기능별 설계 결정과 당시 검증 기록
 ├── README.md                   # 프로젝트 개요·설치
 ├── run.md                      # 실행·검사 명령
 ├── todo.md                     # 최우선 개발 기능·기존 단계별 로드맵
@@ -90,7 +93,7 @@ project_llm/
 └── tsconfig.json               # TypeScript 설정
 ```
 
-현재 구현된 파일만 표시합니다. 도구 반복 실행, 사용자 장기 기억, 문서 검색용 빈 폴더는 만들지 않습니다. 후속 개발 순서는 [todo.md](todo.md), 경로 변경과 호환 범위는 [ADR 0012](docs/adr/0012-feature-runtime-structure.md)를 따릅니다.
+현재 구현된 파일만 표시합니다. 기능 현황과 제약은 [개발 현황](docs/development-status.md)에 정리합니다. 도구 반복 실행, 사용자 장기 기억, 문서 검색용 빈 폴더는 만들지 않습니다. 후속 개발 순서는 [todo.md](todo.md), 경로 변경과 호환 범위는 [ADR 0012](docs/adr/0012-feature-runtime-structure.md)를 따릅니다.
 
 ## 실행 흐름
 
@@ -183,7 +186,7 @@ backend/app/
 - `backend/app/runtime/cancellation.py`: `GenerationCancelled`와 공통 비동기 중단 처리를 검색·압축·생성에서 공유합니다.
 - `backend/app/llm/providers/mlx.py`: `count_input`과 `ProviderDelta`로 실제 입력 토큰·본문·최종 사용량·명시적 `finish_reason`을 전달하고 유효한 `logprobs`에서 확인한 누적 수신 토큰을 계산합니다. 숨겨진 reasoning 본문은 표시·저장에서 제외하되 확인된 토큰 수는 전달합니다.
 - `backend/app/config.py`: 모델 설정, 압축 시작·목표 비율·최근 원문 수·요약 출력 상한, DB 활성화 여부, pool·timeout과 검색 공급자·시간/자료 상한을 읽습니다. `DATABASE_URL`과 migration 전용 URL, `WEB_SEARCH_API_KEY`는 `SecretStr`로 보관하며 빈 값은 미설정으로 처리합니다.
-- `backend/app/schemas.py`: 채팅 메시지와 생성 옵션의 데이터 구조 및 검증 규칙입니다.
+- `backend/app/schemas.py`: 채팅 메시지와 생성 옵션의 데이터 구조 및 검증 규칙입니다. 답변 출력 기본값·API 상한은 4,096토큰이며, `services/generations/admission.py`가 잔여 문맥·사용자 허용량에 맞춰 실제 상한을 줄입니다.
 - `backend/tests/test_api.py`: Mock 상태 조회·공개 health와 구형 `/api/chat`의 `410`을 검사합니다.
 - `backend/tests/test_config.py`, `backend/tests/test_health.py`: DB 설정 검증과 비밀값 마스킹, liveness·readiness 계약을 검사합니다.
 - `backend/tests/conftest.py`: 실제 PostgreSQL에 테스트마다 고유 DB를 만들고 정리하는 공통 도구입니다. `TEST_DATABASE_URL`이 없으면 PostgreSQL 전용 검사를 건너뜁니다.
