@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatMessage(BaseModel):
@@ -16,6 +16,7 @@ class ChatMessage(BaseModel):
 
 
 class GenerationOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
     thinking: bool = False
     max_tokens: int = Field(default=1_024, ge=1, le=4_096)
 

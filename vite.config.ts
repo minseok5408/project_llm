@@ -4,4 +4,5 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   css: { postcss: { plugins: [tailwindcss()] } },
   plugins: [vinext()],
+  server: { host: '0.0.0.0', port: 3000, strictPort: true },
 });

@@ -1,4 +1,7 @@
-# Secrets and local credentials — never commit
+# 로컬 에이전트 작업 규칙은 저장소에서 제외
+AGENTS.md
+
+# 비밀값과 로컬 인증 정보 — 커밋 금지
 .env*
 !.env.example
 /.dev.vars*
@@ -18,7 +21,7 @@
 !*credentials*.example.json
 !*service-account*.example.json
 
-# Local models and Hugging Face caches — large files, keep outside Git
+# 로컬 모델과 Hugging Face 캐시 — 대용량 파일은 Git 외부에 보관
 /.cache/
 /.huggingface/
 /models/
@@ -35,7 +38,7 @@
 *.onnx_data
 pytorch_model*.bin
 
-# Local datasets, uploads, experiment runs, and databases
+# 로컬 데이터셋, 업로드, 실험 결과와 데이터베이스
 /data/
 /datasets/
 /uploads/
@@ -48,7 +51,7 @@ pytorch_model*.bin
 *.db
 /.ipynb_checkpoints/
 
-# Python environments and generated package files
+# Python 환경과 자동 생성 패키지 파일
 /.venv/
 /venv/
 __pycache__/
@@ -68,7 +71,7 @@ __pycache__/
 /coverage.xml
 /htmlcov/
 
-# JavaScript dependencies and package-manager caches
+# JavaScript 의존성과 패키지 관리자 캐시
 /node_modules/
 /.npm/
 /.pnpm-store/
@@ -80,7 +83,7 @@ __pycache__/
 !.yarn/releases
 !.yarn/versions
 
-# Vinext, Vite, and local build output
+# Vinext, Vite와 로컬 빌드 결과
 /.next/
 /.vinext/
 /.vite/
@@ -94,7 +97,7 @@ __pycache__/
 next-env.d.ts
 *.tsbuildinfo
 
-# Logs and temporary runtime files
+# 로그와 실행 중 생성되는 임시 파일
 *.log
 *.pid
 *.sock
@@ -106,7 +109,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# IDE and editor-local settings
+# IDE와 편집기의 로컬 설정
 /.idea/
 /.vscode/
 /.fleet/
@@ -115,10 +118,10 @@ yarn-error.log*
 *.swo
 *~
 
-# Operating-system files
+# 운영체제에서 생성하는 파일
 .DS_Store
 ._*
 Thumbs.db
 
-# Keep the repository-safe environment template tracked:
+# 비밀값이 없는 환경 설정 예시 파일은 Git으로 관리:
 #   .env.example

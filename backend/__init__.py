@@ -1,1 +1,1 @@
-"""Qwen Workbench backend package."""
+"""Qwen Workbench 백엔드 패키지."""

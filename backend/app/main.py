@@ -1,25 +1,25 @@
-import asyncio
-import json
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
-from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 
+from backend.app.api.auth import (
+    AuthNoStoreMiddleware,
+    AuthRateLimiter,
+    CurrentAuth,
+    WriteAuth,
+)
+from backend.app.api.auth import router as auth_router
+from backend.app.api.conversations import router as conversations_router
+from backend.app.api.generations import router as generations_router
+from backend.app.api.health import router as health_router
+from backend.app.api.usage import router as usage_router
 from backend.app.config import Settings, get_settings
-from backend.app.providers import ChatProvider, ProviderUnavailable, build_provider
-from backend.app.schemas import ChatRequest, StatusResponse
-
-logger = logging.getLogger(__name__)
-
-
-def encode_sse(event: str, payload: dict[str, Any]) -> str:
-    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    return f"event: {event}\ndata: {data}\n\n"
+from backend.app.db import Database
+from backend.app.providers import ChatProvider, build_provider
+from backend.app.schemas import StatusResponse
+from backend.app.services.generations import GenerationService, GenerationWorker
 
 
 def create_app(
@@ -32,11 +32,28 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        application.state.settings = app_settings
         application.state.provider = app_provider
-        application.state.generation_gate = asyncio.Semaphore(
-            app_settings.llm_max_concurrent_generations
+        application.state.auth_rate_limiter = AuthRateLimiter()
+        application.state.database = (
+            Database(app_settings) if app_settings.database_enabled else None
         )
-        yield
+        application.state.generations = None
+        worker = None
+        if application.state.database is not None:
+            application.state.generations = GenerationService(
+                application.state.database, app_provider, app_settings
+            )
+            if app_settings.generation_worker_enabled:
+                worker = GenerationWorker(application.state.generations)
+                worker.start()
+        try:
+            yield
+        finally:
+            if worker is not None:
+                await worker.stop()
+            if application.state.database is not None:
+                await application.state.database.dispose()
 
     application = FastAPI(
         title=app_settings.app_name,
@@ -50,66 +67,23 @@ def create_app(
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+    application.add_middleware(AuthNoStoreMiddleware)
 
-    @application.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    application.include_router(health_router)
+    application.include_router(auth_router)
+    application.include_router(conversations_router)
+    application.include_router(generations_router)
+    application.include_router(usage_router)
 
     @application.get("/api/status", response_model=StatusResponse)
-    async def status(request: Request) -> StatusResponse:
+    async def status(request: Request, auth: CurrentAuth) -> StatusResponse:
         current_provider: ChatProvider = request.app.state.provider
         provider_status = await current_provider.status()
         return StatusResponse(provider=provider_status)
 
     @application.post("/api/chat")
-    async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
-        history_size = sum(len(message.content) for message in payload.messages)
-        if history_size > app_settings.llm_max_history_chars:
-            raise HTTPException(
-                status_code=413,
-                detail="대화가 너무 깁니다. 새 대화를 시작하거나 이전 내용을 줄여주세요.",
-            )
-
-        request_id = str(uuid4())
-
-        async def event_stream() -> AsyncIterator[str]:
-            current_provider: ChatProvider = request.app.state.provider
-            gate: asyncio.Semaphore = request.app.state.generation_gate
-            yield encode_sse(
-                "meta",
-                {"request_id": request_id, "model": app_settings.llm_model_id},
-            )
-
-            try:
-                async with gate:
-                    async for delta in current_provider.stream(payload.messages, payload.options):
-                        if await request.is_disconnected():
-                            return
-                        yield encode_sse("delta", {"request_id": request_id, "text": delta.text})
-
-                yield encode_sse("done", {"request_id": request_id})
-            except asyncio.CancelledError:
-                raise
-            except ProviderUnavailable as error:
-                yield encode_sse("error", {"request_id": request_id, "message": str(error)})
-            except Exception:
-                logger.exception("Unexpected generation failure", extra={"request_id": request_id})
-                yield encode_sse(
-                    "error",
-                    {
-                        "request_id": request_id,
-                        "message": "응답 생성 중 오류가 발생했습니다.",
-                    },
-                )
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache, no-transform",
-                "X-Accel-Buffering": "no",
-            },
-        )
+    async def legacy_chat(auth: WriteAuth) -> None:
+        raise HTTPException(status_code=410, detail="저장형 대화 API를 사용하세요.")
 
     return application
 

@@ -1,17 +1,20 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 
 class Settings(BaseSettings):
-    """Runtime configuration loaded from environment variables or a local .env file."""
+    """환경변수 또는 로컬 .env 파일에서 읽는 실행 설정."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     app_name: str = "Qwen Workbench API"
@@ -22,11 +25,74 @@ class Settings(BaseSettings):
     llm_max_concurrent_generations: int = Field(default=1, ge=1, le=8)
     llm_request_timeout_seconds: float = Field(default=900, ge=10, le=3_600)
     llm_max_history_chars: int = Field(default=200_000, ge=1_000, le=2_000_000)
+    llm_compaction_trigger_ratio: float = Field(default=0.75, ge=0.5, le=0.95)
+    llm_compaction_target_ratio: float = Field(default=0.55, ge=0.2, le=0.8)
+    llm_compaction_keep_turns: int = Field(default=4, ge=1, le=20)
+    llm_compaction_max_tokens: int = Field(default=1_024, ge=128, le=4_096)
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    generation_worker_enabled: bool = True
+    generation_queue_limit: int = Field(default=3, ge=1, le=20)
+    database_enabled: bool = False
+    database_url: SecretStr | None = None
+    migration_database_url: SecretStr | None = None
+    database_pool_size: int = Field(default=5, ge=1, le=100)
+    database_max_overflow: int = Field(default=5, ge=0, le=100)
+    database_pool_timeout_seconds: float = Field(default=5, gt=0, le=60)
+    database_connect_timeout_seconds: float = Field(default=5, gt=0, le=60)
+    database_health_timeout_seconds: float = Field(default=2, gt=0, le=30)
+    signup_mode: Literal["open", "disabled"] = "open"
+    auth_cookie_secure: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def protect_database_urls(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        values = dict(value)
+        # 필드 검증 전에 감싸서 구조화된 검증 오류에서도 입력 URL을 가린다.
+        for name in ("database_url", "migration_database_url"):
+            url = values.get(name)
+            if isinstance(url, str):
+                values[name] = SecretStr(url) if url.strip() else None
+        return values
+
+    @field_validator("database_url", "migration_database_url")
+    @classmethod
+    def validate_database_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        # URL 파서 오류에는 인증정보가 포함될 수 있으므로 안전한 메시지만 노출한다.
+        try:
+            url = make_url(value.get_secret_value())
+            valid = (
+                url.drivername == "postgresql+asyncpg"
+                and bool(url.host)
+                and bool(url.database)
+                and (url.port is None or 1 <= url.port <= 65_535)
+            )
+        except (ArgumentError, TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise ValueError(
+                "Database URL must use postgresql+asyncpg and include a host and database"
+            ) from None
+        return value
+
+    @model_validator(mode="after")
+    def require_enabled_database_url(self) -> Self:
+        if self.database_enabled and self.database_url is None:
+            raise ValueError("DATABASE_URL is required when DATABASE_ENABLED is true")
+        if self.llm_compaction_target_ratio >= self.llm_compaction_trigger_ratio:
+            raise ValueError("압축 목표 비율은 시작 비율보다 작아야 합니다.")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def auth_cookie_name(self) -> str:
+        return "__Host-session" if self.auth_cookie_secure else "project_llm_session"
 
 
 @lru_cache

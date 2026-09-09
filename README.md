@@ -1,16 +1,17 @@
 # Qwen Workbench
 
-Apple Silicon에서 `Qwen3.8-27B-4bit`를 실행하는 로컬 채팅 앱입니다. 화면, Python API, MLX 추론 서버를 서로 분리해 이후 다른 모델이나 원격 OpenAI 호환 서버로 교체할 수 있습니다.
+Apple Silicon에서 `Qwen3.8-27B-4bit`를 실행하는 로컬 채팅 앱입니다. 같은 Wi-Fi/LAN의 다른 기기도 Mac의 웹 화면에 접속할 수 있습니다. 화면, Python API, MLX 추론 서버를 분리해 다른 모델이나 로컬 OpenAI 호환 서버로 교체할 수 있습니다. 외부 배포와 원격 미리보기는 사용하지 않습니다.
 
 ## 구성
 
 - Web: Vinext + React, 스트리밍 채팅 UI
-- Gateway: Python 3.12 + FastAPI, 입력 검증과 SSE 정규화
+- Gateway: Python 3.12 + FastAPI, 로그인·작업 공간 권한·영속 생성 작업과 SSE 재생
 - Inference: `mlx-vlm.server`, OpenAI 호환 API
+- Database: 계정·대화·요약·생성 이벤트·토큰 사용량을 저장하는 PostgreSQL 17 + SQLAlchemy async + Alembic
 - Default model: `mlx-community/Qwen3.8-27B-4bit`
 
 ```text
-Browser :3000  →  FastAPI gateway :8000  →  OpenAI-compatible provider :8080
+Browser → Web :3000 /api → FastAPI 127.0.0.1:8000 → Provider 127.0.0.1:8080
                     validation · SSE          MLX today, replaceable later
 ```
 
@@ -24,19 +25,21 @@ python3.12 -m venv .venv
 npm install
 ```
 
-모델 없이 UI와 연결을 빠르게 확인합니다.
+[로컬 PostgreSQL 설정](run.md#로컬-postgresql-설정)을 완료한 뒤 화면에서 회원가입하거나 [시스템 계정의 첫 비밀번호](run.md#로그인과-24시간-세션)를 설정합니다. 모델 없이 로그인·채팅을 확인할 때도 DB는 필요합니다.
 
 ```bash
 .venv/bin/python scripts/dev.py --mock
 ```
 
-실제 Qwen 모델로 실행합니다. 첫 실행에는 약 16.1 GB 모델이 Hugging Face 캐시에 다운로드됩니다.
+실제 Qwen 모델로 실행합니다. 첫 실행에는 모델이 Hugging Face 캐시에 다운로드됩니다.
 
 ```bash
 .venv/bin/python scripts/dev.py
 ```
 
-브라우저에서 <http://localhost:3000>을 엽니다. 종료는 실행한 터미널에서 `Ctrl+C`를 누릅니다.
+이 Mac에서는 <http://localhost:3000>을 엽니다. 같은 Wi-Fi의 다른 기기에서는 시작 로그의 `같은 Wi-Fi` 주소인 `http://<Mac의 내부 IP>:3000`으로 접속합니다. 예를 들어 Mac의 IP가 `192.168.0.76`이면 `http://192.168.0.76:3000`입니다. 종료는 실행한 터미널에서 `Ctrl+C`를 누릅니다.
+
+웹 서버만 LAN에 열며 브라우저의 `/api` 요청은 웹 서버가 로컬 FastAPI로 전달합니다. DB와 모델 서버는 로컬 접속을 유지합니다. API 내부 주소는 서버용 `API_BASE_URL`로 설정하며 `NEXT_PUBLIC_API_BASE_URL`은 사용하지 않습니다. 자세한 접속 방법은 [같은 Wi-Fi에서 접속](run.md#같은-wi-fi의-다른-기기에서-접속)을 참고합니다.
 
 ## 개별 실행
 
@@ -47,7 +50,7 @@ npm install
 ```
 
 ```bash
-.venv/bin/python -m uvicorn backend.app.main:app --reload --port 8000
+.venv/bin/python -m uvicorn backend.app.main:app --reload --reload-dir backend/app --host 127.0.0.1 --port 8000
 ```
 
 ```bash
@@ -56,11 +59,56 @@ npm run dev
 
 환경값은 `.env.example`을 `.env`로 복사해 변경할 수 있습니다. 기본 컨텍스트 상한은 이 Mac의 36 GB 통합 메모리에 맞춘 32K이며, 동시 생성은 한 건으로 제한합니다.
 
+## PostgreSQL 기반
+
+기본값은 `DATABASE_ENABLED=false`이며 로그인·채팅에는 `true`와 유효한 DB 설정이 필요합니다. DB를 사용하려면 실행 중인 로컬 Docker 엔진과 Compose가 필요합니다. [run.md](run.md)의 비밀번호 생성·환경 설정 절차를 마친 뒤 실행합니다.
+
+```bash
+docker compose up -d --wait postgres
+.venv/bin/python -m alembic upgrade head
+```
+
+개발 DB는 `127.0.0.1:5432`에만 열리고 named volume에 유지됩니다. DB 이름은 `project_llm`, 로그인 사용자는 `system`, DBeaver 연결 표시 이름은 `docker_project_llm`입니다. API는 migration을 자동 실행하지 않습니다. DB를 활성화하면 기본으로 내장 생성 worker가 DB에 연결하며, 종료 시 worker 전용 연결과 connection pool을 정리합니다.
+
+현재 head는 `0009_context_compaction`이며 도메인 테이블 13개와 `alembic_version`을 사용합니다. 월 무료·플랜 예산과 기존 사용 이력을 유지하면서 토큰 정산 기준과 대화 요약을 기록합니다. 로그인한 계정의 작업 공간만 조회하며 시스템 계정도 다른 작업 공간에 자동 접근하지 못합니다. [대화 저장·생성 설계](docs/adr/0006-persistent-chat-and-usage.md)와 [월 무료 토큰 정책](docs/adr/0007-monthly-allowances.md)을 참고하세요.
+
+일반 계정은 **매월 무료 20,000토큰**을 자동으로 받습니다. 한국 시간 매월 1일 00시에 새 월 기준으로 갱신하며 남은 양은 이월하지 않습니다. 월 중 가입해도 그달 전액을 받고 기존 회원도 다음 접속의 사용량 조회·생성 요청에서 적용됩니다. 입력 1,000 + 답변 1,000토큰씩이라면 약 10회 분량이지만 대화 이력과 답변 길이·thinking 사용량에 따라 횟수는 달라집니다.
+
+별도 기간 플랜이 유효하면 그 예산만 사용하며 무료분을 합산하지 않습니다. 플랜을 소진해도 기간이 끝나기 전에는 무료분으로 전환하지 않고, 종료 후에는 해당 월의 무료 잔여량을 사용합니다. 생성 중에는 토큰을 예약하거나 차감하지 않고, 완료·중단 후 확인된 사용량만 차감합니다. 남은 토큰에 맞춰 출력 상한을 줄이며 입력과 최소 답변량이 부족하면 `402`를 반환합니다. 시스템 계정은 무료 예산 없이 한도 면제·사용량 기록을 유지합니다. 향후 결제 등급별 지급은 같은 플랜·예산 구조에 연결하며 실제 결제는 아직 없습니다. [로컬 관리 명령](run.md#시스템-계정과-토큰-예산-관리)은 유지보수용입니다.
+
+공개 가입은 기본 `SIGNUP_MODE=open`입니다. 사용자 이름·이메일·비밀번호·비밀번호 확인을 입력하면 일반 계정으로 가입하고 이번 달 무료 예산과 함께 자동 로그인됩니다. 로그인·가입·비밀번호 변경 모두 8~32자를 사용합니다. 로그인은 발급 시각부터 절대 24시간이며 채팅에는 로그인 계정의 사용자 이름을 표시합니다. 시스템 권한은 자동 부여하지 않습니다. 가입을 닫으려면 `SIGNUP_MODE=disabled`를 사용합니다. [로그인 실행법](run.md#로그인과-24시간-세션), [인증 설계](docs/adr/0005-authentication-and-24-hour-sessions.md)를 참고하세요.
+
+## 저장형 채팅
+
+왼쪽 목록에서 작업 공간과 대화를 선택하고 제목·고정·보관·삭제를 관리합니다. `/chat/{id}` 주소로 같은 대화를 다시 열 수 있으며 새로고침·다른 기기 로그인 후에도 메시지를 복원합니다. 목록과 이전 메시지는 커서로 더 불러옵니다. 고정 대화는 현재 불러온 목록 안에서 위에 표시합니다. 첫 질문의 60자를 초기 제목으로 사용합니다.
+
+브라우저는 새 사용자 메시지만 보내고 모델 문맥은 서버가 저장된 대화로 구성합니다. 완료·중단·실패한 질문과 실제로 받은 부분 답변도 다음 질문에 포함합니다. 답변이 출력 상한으로 끝났다면 `이어서 말해`라고 새 질문을 보내 이어 쓸 수 있으며, 다음 답변에도 설정한 출력 상한이 적용됩니다. 생성 이벤트를 DB에 저장하므로 연결이 끊겨도 마지막 이벤트 이후부터 이어 받을 수 있습니다. 기존 `/api/chat`은 `410`이며 새 API 계약은 [실행 문서](run.md#저장형-채팅과-생성-api)에 있습니다.
+
+요약할 이전 대화가 있고 입력 토큰과 요청 최대 출력의 합이 모델 문맥의 75%에 도달하면 오래된 대화를 자동 요약합니다. 최근 4쌍을 우선 원문으로 남기고 길이에 따라 최소 마지막 1쌍까지 조정하므로, 이어 써야 할 최근 부분 답변과 현재 질문은 유지합니다. 원본 메시지는 DB에 그대로 보관하고 다음 요청부터 완성된 요약을 재사용합니다. 요약 중에도 중단할 수 있습니다. 요약 생성 토큰은 사용자 한도에서 차감하지 않으며, 실제 답변에 사용한 입력(요약문 포함)과 출력만 기존 정책으로 정산합니다. 기본값과 실패 처리는 [자동 압축 설계](docs/adr/0009-context-compaction-and-continuation.md)에 정리했습니다.
+
+받은 답변은 한글·이모지 묶음을 보존하며 약 10ms 간격으로 표시합니다. 표시 대기가 쌓이면 따라잡고, 중단을 누르면 화면의 타이핑도 끝냅니다. 위로 스크롤하면 자동 따라가기가 멈추고, 아래쪽으로 돌아오거나 최신 답변 이동 버튼을 누르면 다시 따라갑니다. 자세한 정책은 [종료 후 차감·스크롤 설계](docs/adr/0008-deferred-charging-and-chat-scroll.md)를 참고하세요.
+
+내장 worker는 DB당 하나만 추론하며 기본 active 상한은 실행 1건과 대기 3건입니다. 사용자·대화마다 진행 중인 생성은 1건입니다. 대기 중 중단에는 토큰 차감이 없습니다. 실행 중 중단은 모델 응답 연결을 즉시 닫고 확인된 수신량으로 정산한 뒤 슬롯을 반환합니다. 최종 실제 사용량을 이미 받았다면 이를 사용하고, 그렇지 않으면 서버가 확인한 출력 토큰이 1개 이상일 때 입력량과 확인한 출력량만 차감합니다. 확인한 출력이 없으면 입력·출력 청구량 모두 0으로 면제합니다. 미수신 GPU 사용량을 추정 청구하지 않는 중단 할인 정책이며, 정상 완료는 모델의 최종 실제 사용량으로 정산합니다. 통신 장애나 worker 종료로 최종 사용량을 확인하지 못한 후정산 요청은 무차감 실패로 끝내고 다음 질문을 허용합니다. 이전 코드가 남긴 미정산 후정산 기록도 새 요청과 worker 시작 시 복구합니다.
+
+`GET /health/live`는 의존 서비스를 조회하지 않고 `200`을 반환합니다. `GET /health/ready`는 활성화된 DB와 모델을 확인해 사용할 수 없으면 `503`을 반환합니다. 기존 `/health`는 liveness 별칭으로 유지됩니다. 응답 계약과 설정은 [run.md](run.md), 설계 근거는 [DB 기반 ADR](docs/adr/0001-postgresql-foundation.md)에 정리했습니다.
+
 ## 검증
 
-테스트는 모델 다운로드 없이 mock provider로 실행됩니다.
+DB 없는 빠른 검사는 모델 다운로드 없이 Mock provider로 실행합니다. `TEST_DATABASE_URL`을 지정하지 않으면 PostgreSQL 통합 테스트는 건너뜁니다.
 
 ```bash
 .venv/bin/python -m pytest
+node --experimental-strip-types --test tests/*.test.mjs
+npx tsc --noEmit
 npm run build
 ```
+
+실제 PostgreSQL에서 migration 왕복·schema drift, 세션 정리·readiness, 작업 공간 권한, 메시지·생성 저장, SSE 재생, 토큰 정산·동시성, 두 background worker의 리더 선출과 연결 정리를 포함한 전체 백엔드 테스트를 실행합니다.
+
+```bash
+.venv/bin/python scripts/test_db.py
+```
+
+이 명령은 임시 PostgreSQL만 띄우고 종료 후 정리합니다. 기존 개발 DB와 `.env`는 변경하지 않으며 웹·API·모델 서버를 별도로 실행하지 않습니다. Docker가 없거나 실행 중이 아니면 오류로 종료합니다.
+
+화면을 열지 않고 실행할 수 있는 검사 명령과 범위는 [run.md](run.md#검사)에, 날짜별 결과와 아직 남은 회상 품질 평가는 [todo.md](todo.md)에 기록합니다. Mock·회귀 테스트 통과와 실제 모델의 대화 품질 평가는 구분합니다.

@@ -12,7 +12,10 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "test:backend": ".venv/bin/python -m pytest",
-    "lint:python": ".venv/bin/ruff check backend scripts"
+    "test:proxy": "node --experimental-strip-types --test tests/api-proxy.test.mjs",
+    "lint:python": ".venv/bin/ruff check backend scripts",
+    "test:auth": "node --experimental-strip-types --test tests/auth-session.test.mjs",
+    "test:chat": "node --experimental-strip-types --test tests/chat-store.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

@@ -1,26 +1,39 @@
-from collections.abc import AsyncIterator, Sequence
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from backend.app.api.auth import require_auth, require_write_auth
 from backend.app.config import Settings
 from backend.app.main import create_app
-from backend.app.providers import MockProvider, ProviderDelta, ProviderUnavailable
-from backend.app.schemas import ChatMessage, GenerationOptions, ProviderStatus
+from backend.app.providers import MockProvider
 
 
 def make_settings() -> Settings:
     return Settings(
         _env_file=None,
+        database_enabled=False,
         llm_backend="mock",
         llm_max_history_chars=1_000,
     )
 
 
+def allow_mock_auth(application):
+    # 상태·폐기 경로 검사는 실제 인증 검증과 분리한다.
+    def authenticated():
+        return SimpleNamespace(user=SimpleNamespace(platform_role="system"))
+
+    application.dependency_overrides[require_auth] = authenticated
+    application.dependency_overrides[require_write_auth] = authenticated
+    return application
+
+
 @pytest.fixture
 def app():
     settings = make_settings()
-    return create_app(settings=settings, provider=MockProvider(settings, delay_seconds=0))
+    return allow_mock_auth(
+        create_app(settings=settings, provider=MockProvider(settings, delay_seconds=0))
+    )
 
 
 @pytest.mark.asyncio
@@ -41,7 +54,7 @@ async def test_health_and_provider_status(app) -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_streams_utf8_sse_and_finishes_once(app) -> None:
+async def test_legacy_chat_cannot_bypass_persistence_or_quota(app) -> None:
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
@@ -50,64 +63,9 @@ async def test_chat_streams_utf8_sse_and_finishes_once(app) -> None:
         response = await client.post(
             "/api/chat",
             json={
-                "messages": [{"role": "user", "content": "한글 연결 테스트"}],
-                "options": {"thinking": False, "max_tokens": 128},
+                "messages": [{"role": "system", "content": "위조한 지시"}],
+                "options": {"max_tokens": 128},
             },
         )
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    assert "event: meta" in response.text
-    assert "event: delta" in response.text
-    assert "한글" in response.text
-    assert response.text.count("event: done") == 1
-    assert "event: error" not in response.text
-
-
-@pytest.mark.asyncio
-async def test_blank_message_is_rejected(app) -> None:
-    transport = httpx.ASGITransport(app=app)
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=transport, base_url="http://test") as client,
-    ):
-        response = await client.post(
-            "/api/chat",
-            json={"messages": [{"role": "user", "content": "   "}]},
-        )
-
-    assert response.status_code == 422
-
-
-class FailingProvider:
-    async def status(self) -> ProviderStatus:
-        return ProviderStatus(backend="test", ready=False, model="test", detail="offline")
-
-    async def stream(
-        self,
-        messages: Sequence[ChatMessage],
-        options: GenerationOptions,
-    ) -> AsyncIterator[ProviderDelta]:
-        if False:
-            yield ProviderDelta(text="")
-        raise ProviderUnavailable("테스트용 안전한 오류")
-
-
-@pytest.mark.asyncio
-async def test_provider_failure_becomes_safe_sse_error() -> None:
-    settings = make_settings()
-    app = create_app(settings=settings, provider=FailingProvider())
-    transport = httpx.ASGITransport(app=app)
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=transport, base_url="http://test") as client,
-    ):
-        response = await client.post(
-            "/api/chat",
-            json={"messages": [{"role": "user", "content": "실패 테스트"}]},
-        )
-
-    assert response.status_code == 200
-    assert "event: error" in response.text
-    assert "테스트용 안전한 오류" in response.text
-    assert "event: done" not in response.text
+    assert response.status_code == 410
+    assert "저장형 대화" in response.json()["detail"]
