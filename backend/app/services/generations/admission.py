@@ -13,6 +13,7 @@ from backend.app.context.builder import (
 )
 from backend.app.context.compaction import count_context
 from backend.app.context.service import latest_summary
+from backend.app.context.status import context_measurement
 from backend.app.models import (
     Conversation,
     GenerationRun,
@@ -340,6 +341,9 @@ class AdmissionMixin:
                     "user_message_id": str(user_message.id),
                     "assistant_message_id": str(assistant.id),
                     "status": "queued",
+                    "context": context_measurement(
+                        run, self.settings, through=through, phase="preparing"
+                    ),
                 },
             )
             await session.commit()

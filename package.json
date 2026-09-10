@@ -15,7 +15,7 @@
     "test:proxy": "node --experimental-strip-types --test tests/api-proxy.test.mjs",
     "lint:python": ".venv/bin/ruff check backend scripts",
     "test:auth": "node --experimental-strip-types --test tests/auth-session.test.mjs",
-    "test:chat": "node --experimental-strip-types --test tests/chat-store.test.mjs tests/chat-scroll.test.mjs tests/chat-render.test.mjs tests/clipboard.test.mjs",
+    "test:chat": "node --experimental-strip-types --test tests/chat-store.test.mjs tests/chat-activity.test.mjs tests/chat-scroll.test.mjs tests/chat-render.test.mjs tests/clipboard.test.mjs",
     "test:frontend": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import make_url
 
 from backend.app.context.service import CompactionService
+from backend.app.context.status import context_status
 from backend.app.llm.protocol import ProviderUnavailable
 from backend.app.models import GenerationRun
 from backend.app.repositories import AccessDenied, InvalidInput, Repository
@@ -184,6 +185,20 @@ class GenerationWorker:
                 return
             messages = [ChatMessage.model_validate(message) for message in job["messages"]]
             options = GenerationOptions.model_validate(job["options"])
+            async with self.service.database.session() as session:
+                run = await session.scalar(
+                    select(GenerationRun).where(GenerationRun.id == run_id).with_for_update()
+                )
+                context = await context_status(session, run)
+                if context is not None:
+                    context.update(
+                        phase="ready",
+                        input_tokens=run.prompt_tokens,
+                        max_output_tokens=run.max_output_tokens,
+                        context_window=self.service.settings.llm_context_window,
+                    )
+                    add_event(session, run, "meta", {"stage": "generating", "context": context})
+                    await session.commit()
             answer_started = True
             async with aclosing(self.service.provider.stream(messages, options)) as stream:
                 pending = None

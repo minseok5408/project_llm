@@ -22,8 +22,9 @@ from backend.app.api.conversations import (
     read_json_payload,
     read_query,
 )
+from backend.app.context.status import context_status
 from backend.app.llm.protocol import ProviderUnavailable
-from backend.app.models import GenerationEvent, TokenReservation, WebSearchRun
+from backend.app.models import GenerationEvent, GenerationRun, TokenReservation, WebSearchRun
 from backend.app.repositories import AccessDenied, Conflict, InvalidInput, RepositoryUnavailable
 from backend.app.schemas import GenerationOptions
 from backend.app.services.auth import AuthService, InvalidSession
@@ -153,6 +154,29 @@ async def regenerate_answer(generation_id: str, request: Request, auth: WriteAut
     return private_json(result, status_code=202)
 
 
+@router.get("/generations/active")
+async def active_generations(request: Request, auth: CurrentAuth) -> JSONResponse:
+    """목록 페이지나 현재 작업 공간에 관계없이 본인의 진행 작업을 복원한다."""
+    read_query(request, EmptyPayload)
+    async with data_session(request) as session:
+        runs = (
+            await session.scalars(
+                select(GenerationRun).where(
+                    GenerationRun.user_id == auth.user.id,
+                    GenerationRun.status.in_(("queued", "running")),
+                )
+            )
+        ).all()
+        items = []
+        for run in runs:
+            try:
+                await accessible_run(session, auth.user.id, run.id)
+            except AccessDenied:
+                continue
+            items.append(run_payload(run))
+        return private_json({"items": items})
+
+
 @router.get("/generations/{generation_id}")
 async def get_generation(generation_id: str, request: Request, auth: CurrentAuth) -> JSONResponse:
     read_query(request, EmptyPayload)
@@ -169,6 +193,7 @@ async def get_generation(generation_id: str, request: Request, auth: CurrentAuth
                 "output_tokens": reservation.output_tokens,
                 "usage_basis": reservation.usage_basis,
                 "search": search_payload(search),
+                "context": await context_status(session, run),
             }
         )
 

@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ChatState, Conversation } from '../state/chat-store.ts';
+import { taskLabel } from './generation-activity';
 
 export function ConversationSidebar({
   state,
@@ -46,7 +47,8 @@ export function ConversationSidebar({
     | 'listLoading'
     | 'conversations'
     | 'conversationCursor'
-  >;
+  > &
+    Partial<Pick<ChatState, 'tasks' | 'notifications'>>;
   sidebarOpen: boolean;
   desktopCollapsed?: boolean;
   isGenerating: boolean;
@@ -288,7 +290,25 @@ export function ConversationSidebar({
                 {conversation.active_generation_id && (
                   <LoaderCircle
                     className="size-3.5 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none"
-                    aria-label="응답 생성 중"
+                    aria-label={
+                      state.tasks?.find(
+                        (task) => task.conversationId === conversation.id,
+                      )
+                        ? taskLabel(
+                            state.tasks.find(
+                              (task) => task.conversationId === conversation.id,
+                            )!,
+                          )
+                        : '응답 생성 중'
+                    }
+                  />
+                )}
+                {state.notifications?.some(
+                  (item) => item.conversationId === conversation.id,
+                ) && (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full bg-primary"
+                    aria-label="새 작업 알림"
                   />
                 )}
               </a>

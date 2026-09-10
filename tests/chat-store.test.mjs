@@ -77,6 +77,8 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
           items: [{ id: W, name: '기본 공간', role: 'owner' }],
         });
       if (url === '/api/v1/usage') return Response.json(balance);
+      if (url === '/api/v1/generations/active')
+        return Response.json({ items: [] });
       if (String(url).startsWith('/api/v1/conversations?'))
         return Response.json({ items: [conversation], next_cursor: null });
       if (url === `/api/v1/conversations/${C}`)
@@ -405,8 +407,11 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
       false,
     );
     store.newDraft();
-    assert.equal(streamSignal.aborted, true);
+    assert.equal(streamSignal.aborted, false);
     assert.equal(store.getSnapshot().messages.length, 0);
+    assert.equal(store.getSnapshot().tasks[0].generation.id, G);
+    await store.openConversation(C);
+    assert.equal(store.getSnapshot().messages[0].content, '복원한 응답');
     streamController.close();
   });
 
@@ -1018,11 +1023,13 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     assert.equal(store.getSnapshot().messages[0].content, '원문');
   });
 
-  it('재생성 중의 연속 클릭을 차단하고 화면 이동 뒤 늦은 접수 응답은 무시한다', async () => {
+  it('재생성 중의 연속 클릭을 차단하고 화면 이동 뒤에도 원래 대화의 접수를 완료한다', async () => {
     let complete;
     let posts = 0;
     let submittedSignal;
     const store = create(async (url, init) => {
+      if (url === `/api/v1/generations/${G}`)
+        return Response.json({ ...generation, status: 'completed' });
       if (url.includes('/messages?'))
         return Response.json({
           items: [
@@ -1060,11 +1067,12 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
         { status: 202 },
       ),
     );
-    assert.equal(await first, false);
-    assert.equal(submittedSignal.aborted, true);
+    assert.equal(await first, true);
+    assert.equal(submittedSignal.aborted, false);
     assert.equal(store.getSnapshot().generation, null);
     assert.equal(store.getSnapshot().selected, null);
     assert.equal(store.getSnapshot().draft, '새 대화 질문');
+    assert.equal(store.getSnapshot().notifications[0].conversationId, C);
   });
 
   it('서버가 재생성을 허용하지 않는 메시지와 보관된 대화에서는 요청하지 않는다', async () => {

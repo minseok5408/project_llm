@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.auth import CurrentAuth, WriteAuth, require_json
+from backend.app.context.status import context_status
 from backend.app.db import Database
 from backend.app.models import Conversation, GenerationEvent, GenerationRun, Message, WebSearchRun
 from backend.app.repositories import (
@@ -305,6 +306,13 @@ async def list_messages(conversation_id: str, request: Request, auth: CurrentAut
             }
             for run in runs
         }
+        latest_run = await session.scalar(
+            select(GenerationRun)
+            .join(Message, Message.id == GenerationRun.assistant_message_id)
+            .where(GenerationRun.conversation_id == conversation.id, GenerationRun.is_current)
+            .order_by(Message.sequence.desc())
+            .limit(1)
+        )
         return private_json(
             {
                 "items": [
@@ -312,5 +320,6 @@ async def list_messages(conversation_id: str, request: Request, auth: CurrentAut
                 ],
                 "next_cursor": page.next_cursor,
                 "active_generation_id": active.get(conversation.id),
+                "context": await context_status(session, latest_run) if latest_run else None,
             }
         )

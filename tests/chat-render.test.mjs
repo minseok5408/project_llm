@@ -20,6 +20,10 @@ const { ConversationSidebar } =
   await import('../features/chat/components/conversation-sidebar.tsx');
 const { TokenUsagePanel } =
   await import('../features/usage/components/token-usage-panel.tsx');
+const { ContextStatusPanel } =
+  await import('../features/chat/components/context-status-panel.tsx');
+const { GenerationActivity } =
+  await import('../features/chat/components/generation-activity.tsx');
 const { AccountSettingsContent, TokenUsageDetails } =
   await import('../features/preferences/components/account-settings-dialog.tsx');
 const { default: Home } = await import('../app/page.tsx');
@@ -52,6 +56,105 @@ const base = {
 const message = (props = {}) =>
   renderToStaticMarkup(createElement(ChatMessageView, { ...base, ...props }));
 
+describe('문맥과 전역 작업 표시', () => {
+  const context = {
+    generation_id: 'g',
+    phase: 'ready',
+    input_tokens: 1024,
+    output_tokens: null,
+    max_output_tokens: 512,
+    context_window: 4096,
+    summary_through_sequence: 8,
+    compaction_status: 'completed',
+  };
+  const panel = (value) =>
+    renderToStaticMarkup(createElement(ContextStatusPanel, { context: value }));
+  it('측정되지 않은 문맥을 0%로 표시하지 않고 비율을 생략한다', () => {
+    for (const value of [
+      null,
+      { ...context, input_tokens: null, summary_through_sequence: null },
+    ]) {
+      const html = panel(value);
+      assert.match(html, /문맥 미확인/);
+      assert.doesNotMatch(html, /<progress|문맥 0%/);
+    }
+  });
+  it('생성 중에는 입력 기준, 완료 뒤에는 확인된 출력까지 포함하고 계정 예산과 구분한다', () => {
+    const running = panel(context);
+    assert.match(running, /문맥 25%/);
+    assert.match(running, /입력 기준 문맥 사용 비율/);
+    assert.match(running, /메시지 순번 8까지 요약 반영/);
+    assert.match(running, /계정의 잔여 토큰과 별개/);
+    const finished = panel({
+      ...context,
+      phase: 'finished',
+      output_tokens: 1024,
+    });
+    assert.match(finished, /문맥 50%/);
+    assert.match(finished, /확인된 입력과 출력의 문맥 사용 비율/);
+    assert.doesNotMatch(finished, /출력 사용량이 미확인/);
+  });
+  it('압축 실패와 중단을 완료로 표시하지 않고 원문 보존을 안내한다', () => {
+    for (const [status, label] of [
+      ['failed', '압축 실패'],
+      ['cancelled', '압축 중단'],
+    ]) {
+      const html = panel({ ...context, compaction_status: status });
+      assert.ok(html.includes(label));
+      assert.match(html, /원본 대화는 보존/);
+      assert.doesNotMatch(html, /압축 완료/);
+    }
+  });
+  it('전역 작업에 중단·재연결을 제공하고 완료·실패·사용량 확인 알림을 구분한다', () => {
+    const html = renderToStaticMarkup(
+      createElement(GenerationActivity, {
+        tasks: [
+          {
+            conversationId: 'a',
+            title: '작업 대화',
+            generation: { id: 'g', status: 'running' },
+            stream: 'paused',
+            cancelling: false,
+          },
+        ],
+        notifications: [
+          {
+            id: 'done',
+            conversationId: 'b',
+            title: '완료 대화',
+            status: 'completed',
+          },
+          {
+            id: 'failed',
+            conversationId: 'c',
+            title: '실패 대화',
+            status: 'failed',
+          },
+          {
+            id: 'pending',
+            conversationId: 'd',
+            title: '확인 대화',
+            status: 'usage_pending',
+          },
+        ],
+        onOpen() {},
+        onCancel() {},
+        onReconnect() {},
+        onDismiss() {},
+      }),
+    );
+    for (const label of [
+      '작업 1개, 알림 3개',
+      '다시 연결',
+      '중단',
+      '답변 완료',
+      '생성 실패',
+      '사용량 확인 필요',
+    ])
+      assert.ok(html.includes(label));
+  });
+});
+
 describe('기능별 화면 연결', () => {
   it('홈과 대화 주소는 서버 렌더링에서 같은 로그인 확인 화면을 제공한다', () => {
     const home = renderToStaticMarkup(createElement(Home));
@@ -61,7 +164,8 @@ describe('기능별 화면 연결', () => {
     assert.doesNotMatch(home, /채팅 메시지/);
   });
 
-  it('분리한 입력창은 생성 중 잠금과 중단 중 초안 입력을 유지한다', () => {
+  it('생성 중에도 초안을 입력하되 전송을 막고 문맥 드롭다운을 표시하지 않는다', () => {
+    let sent = 0;
     const props = {
       state: {
         stream: 'live',
@@ -81,14 +185,61 @@ describe('기능별 화면 연결', () => {
       thinking: false,
       onReconnect() {},
       onCancel() {},
-      onSend() {},
+      onSend() {
+        sent += 1;
+      },
       onDraftChange() {},
       onThinkingChange() {},
     };
     const searching = renderToStaticMarkup(createElement(ChatComposer, props));
     assert.match(searching, /웹에서 참고 자료를 찾는 중/);
     assert.doesNotMatch(searching, /최대 출력 토큰/);
-    assert.match(searching, /<textarea\b[^>]*disabled=""/);
+    assert.doesNotMatch(searching, /<textarea\b[^>]*disabled=""/);
+    assert.doesNotMatch(searching, /문맥 미확인|모델 문맥 상한/);
+    const find = (node, match) => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (match(node)) return node;
+      for (const child of [node.props?.children].flat()) {
+        const found = find(child, match);
+        if (found) return found;
+      }
+    };
+    const blocked = ChatComposer(props);
+    let prevented = false;
+    find(blocked, (node) => node.type === 'form').props.onSubmit({
+      preventDefault() {},
+    });
+    find(
+      blocked,
+      (node) => node.props?.id === 'chat-message-input',
+    ).props.onKeyDown({
+      key: 'Enter',
+      shiftKey: false,
+      nativeEvent: { isComposing: false },
+      preventDefault() {
+        prevented = true;
+      },
+    });
+    assert.equal(sent, 0);
+    assert.equal(prevented, false);
+    const ready = ChatComposer({
+      ...props,
+      isGenerating: false,
+      canSend: true,
+    });
+    find(
+      ready,
+      (node) => node.props?.id === 'chat-message-input',
+    ).props.onKeyDown({
+      key: 'Enter',
+      shiftKey: false,
+      nativeEvent: { isComposing: false },
+      preventDefault() {
+        prevented = true;
+      },
+    });
+    assert.equal(sent, 1);
+    assert.equal(prevented, true);
     const cancelling = renderToStaticMarkup(
       createElement(ChatComposer, { ...props, cancelling: true }),
     );

@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 
 from backend.app.context.builder import compose_context, list_context_turns
 from backend.app.context.compaction import count_context, plan_tail, summary_batch
+from backend.app.context.status import context_measurement
 from backend.app.llm.protocol import ProviderUnavailable
 from backend.app.models import (
     Conversation,
@@ -71,7 +72,14 @@ class CompactionService:
             if run.cancel_requested:
                 raise GenerationCancelled
             content = (await session.get(Message, run.user_message_id)).content
-            add_event(session, run, "meta", {"status": "running", "stage": "compacting"})
+            progress = context_measurement(run, self.settings, through=through, phase="preparing")
+            progress["compaction_status"] = "running"
+            add_event(
+                session,
+                run,
+                "meta",
+                {"status": "running", "stage": "compacting", "context": progress},
+            )
             await session.commit()
 
         options = GenerationOptions.model_validate(job["options"])
@@ -91,6 +99,7 @@ class CompactionService:
                 older[selected - 1].assistant_sequence,
                 cancellation,
             )
+            through = older[selected - 1].assistant_sequence
             older = older[selected:]
 
         context = compose_context(recent, content, summary)
@@ -127,7 +136,17 @@ class CompactionService:
                 session,
                 run,
                 "meta",
-                {"status": "running", "stage": "generating", "context_compacted": True},
+                {
+                    "status": "running",
+                    "stage": "generating",
+                    "context_compacted": True,
+                    "context": {
+                        **context_measurement(
+                            run, self.settings, through=through, phase="preparing"
+                        ),
+                        "compaction_status": "completed",
+                    },
+                },
             )
             result = {
                 **job,

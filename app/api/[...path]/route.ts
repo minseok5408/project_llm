@@ -11,6 +11,7 @@ const API_METHODS: Readonly<Record<string, readonly string[]>> = {
   '/api/v1/workspaces': ['GET'],
   '/api/v1/conversations': ['GET', 'POST'],
   '/api/v1/usage': ['GET'],
+  '/api/v1/generations/active': ['GET'],
   '/api/v1/network-mode': ['GET', 'PATCH'],
   '/api/v1/network-mode/check': ['POST'],
 };

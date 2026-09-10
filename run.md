@@ -148,6 +148,9 @@ docker compose up -d --wait postgres
 - 테마는 현재 브라우저의 `project-llm-theme` 값으로 저장하고 같은 출처의 다른 탭에도 반영합니다. 브라우저 저장이 차단된 경우 현재 화면에는 적용되지만 재접속 시 유지되지 않을 수 있습니다. 계정별 DB 설정은 아니므로 다른 기기나 접속 주소에서는 기본 시스템 테마로 시작합니다.
 - 설정 모달의 **연결 및 검색**에서 로컬 전용·웹검색 방식을 바꿉니다. 화면 오른쪽 아래 **모델 정보**에서 모델 이름과 연결 상태를 확인합니다. 입력창 **생성 설정**에서 깊이 생각하기를 선택합니다. 최대 출력 토큰은 서버에서 관리하며 화면에는 숫자 선택을 제공하지 않습니다.
 - 입력창 오른쪽 화살표로 전송하고 생성 중에는 같은 자리의 사각형으로 **답변 중단**을 요청합니다. 참고 자료는 기본으로 접혀 있고 펼치면 제목 링크만 표시합니다.
+- 대화를 이동해도 각 대화의 입력 초안과 생성 연결을 유지합니다. 같은 대화에서 AI가 답변 중일 때도 다음 질문을 작성할 수 있으며 전송만 차단합니다. 이때 Enter는 줄바꿈으로 동작하고 중단 버튼은 계속 사용할 수 있습니다. 계정당 생성은 기존처럼 하나입니다.
+- 상단 로컬/온라인 표시 옆 작업 메뉴와 입력창 아래 문맥 드롭다운은 표시하지 않습니다. 전역 작업 상태와 문맥 측정 기록은 내부에서 유지하며, 계정 잔여 토큰은 **설정 → 사용량**에서 확인합니다.
+- 초안과 완료 알림은 현재 로그인 화면의 메모리에만 보관합니다. 새로고침·로그아웃 때 초기화되며, 서버의 진행 작업과 대화·문맥 기록은 다시 복원합니다. 새 측정 기록이 없는 과거 답변의 문맥 수치는 추정하지 않습니다.
 
 ### 저장과 API
 
@@ -162,10 +165,11 @@ docker compose up -d --wait postgres
 | `GET /api/v1/conversations/{id}`                                                       | 단건 대화와 `active_generation_id`                                    |
 | `PATCH /api/v1/conversations/{id}`                                                     | `title`, `is_pinned`, `status` 중 변경할 값만 전송                    |
 | `DELETE /api/v1/conversations/{id}`                                                    | JSON `{}`로 soft delete, `204`                                        |
-| `GET /api/v1/conversations/{id}/messages?before=<sequence>&limit=50`                   | 시간순 메시지 한 페이지·`next_cursor`·`active_generation_id`          |
+| `GET /api/v1/conversations/{id}/messages?before=<sequence>&limit=50`                   | 시간순 메시지 한 페이지·`next_cursor`·`active_generation_id`·최근 요청의 `context` |
 | `GET /api/v1/usage`                                                                    | 자기 계정의 기간 한도·실사용·예약·잔여량; system은 `unlimited=true`   |
 | `POST /api/v1/conversations/{id}/messages`                                             | 새 사용자 메시지·생성 옵션·검색 모드 승인, `202`                      |
-| `GET /api/v1/generations/{id}`                                                         | 생성 상태와 확정된 입력·출력 사용량                                   |
+| `GET /api/v1/generations/active`                                                       | 권한을 유지한 본인의 진행 작업; 목록 페이지·작업 공간 선택과 무관한 복원 |
+| `GET /api/v1/generations/{id}`                                                         | 생성 상태·확정된 입력/출력 사용량·요청별 `context`                     |
 | `GET /api/v1/generations/{id}/events?after=0`                                          | 저장한 이벤트 재생; `Last-Event-ID`도 지원                            |
 | `POST /api/v1/generations/{id}/cancel`                                                 | JSON `{}`로 본인이 시작한 생성 중단 요청                              |
 | `POST /api/v1/generations/{id}/regenerate`                                             | 마지막 질문의 현재 답변 재생성; 생성·검색 옵션과 멱등 키, `202`       |

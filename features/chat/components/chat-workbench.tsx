@@ -26,6 +26,7 @@ import { ChatStore } from '../state/chat-store';
 import { ChatScrollFollow, preserveScrollAnchor } from '../scroll/chat-scroll';
 import { ChatMessageView } from './chat-message-view';
 import { ChatComposer } from './chat-composer';
+import { taskLabel } from './generation-activity';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ModelInfoMenu } from './model-info-menu';
 import { ConversationSearchDialog } from './conversation-search-dialog';
@@ -157,6 +158,9 @@ function Workbench({
   const sendRef = useRef<(text: string) => Promise<boolean>>(async () => false);
   const generation = state.generation;
   const isGenerating = Boolean(generation);
+  const otherTask = state.tasks.find(
+    (task) => task.conversationId !== state.selected?.id,
+  );
   const cancelling = state.cancelling || generation?.cancel_requested;
   const compacting = generation?.stage === 'compacting';
   const searching = generation?.stage === 'searching';
@@ -168,6 +172,7 @@ function Workbench({
     !state.loading &&
     !state.sending &&
     !isGenerating &&
+    !otherTask &&
     !logoutPending &&
     !noBalance &&
     Boolean(state.workspaceId) &&
@@ -604,6 +609,39 @@ function Workbench({
             </Button>
           </div>
         </header>
+        {otherTask && (
+          <output className="mx-3 mb-2 flex shrink-0 flex-wrap items-center gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs sm:mx-5">
+            <span className="min-w-0 flex-1 truncate">
+              {otherTask.title} · {taskLabel(otherTask)}
+            </span>
+            {otherTask.conversationId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => open(otherTask.conversationId)}
+              >
+                대화 보기
+              </Button>
+            )}
+            {otherTask.generation && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={
+                  otherTask.cancelling || otherTask.generation.cancel_requested
+                }
+                onClick={() => void store.cancelTask(otherTask.conversationId)}
+              >
+                중단
+              </Button>
+            )}
+            <span className="w-full text-muted-foreground">
+              작업이 끝날 때까지 다음 질문을 작성할 수 있습니다.
+            </span>
+          </output>
+        )}
         {(authError || state.error) && (
           <div
             role="alert"

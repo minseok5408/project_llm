@@ -11,7 +11,7 @@ project_llm/
 │   │   └── state/              # 24시간 인증 세션
 │   ├── chat/
 │   │   ├── components/         # 작업 화면·사이드바·채팅 검색·입력창·메시지·모델 정보
-│   │   ├── state/              # 대화·검색·생성 복원과 API 상태
+│   │   ├── state/              # 계정별 전역 작업·대화별 초안/SSE·문맥 자료형
 │   │   ├── stream/             # SSE 해석·한글/이모지 표시 대기열
 │   │   └── scroll/             # 사용자 스크롤 우선·이전 메시지 위치 보존
 │   ├── network/
@@ -41,7 +41,8 @@ project_llm/
 │   │   │   ├── builder.py      # 현재 답변 버전·부분 답변·요약 문맥 구성
 │   │   │   ├── policy.py       # 짧은 중단 원문 전달 정책
 │   │   │   ├── compaction.py   # 실제 토큰 예산·요약 배치 계획
-│   │   │   └── service.py      # 요약 생성·저장·사용자 비차감 기록
+│   │   │   ├── service.py      # 요약 생성·저장·사용자 비차감 기록
+│   │   │   └── status.py       # 요청별 문맥 측정·압축 상태·요약 반영 범위
 │   │   ├── tools/
 │   │   │   └── web_search/    # 검색 정책·결과·Tavily/Brave 어댑터
 │   │   ├── services/
@@ -115,7 +116,7 @@ project_llm/
 
 - `app/`: `page.tsx`와 `chat/[conversationId]/page.tsx`가 기능 모듈의 공통 채팅 화면을 표시합니다. `layout.tsx`와 `globals.css`는 공통 레이아웃과 테마이며, API 중계 경로도 이 폴더에 유지합니다.
 - `features/auth/`: 로그인·회원가입 게이트와 메모리 인증 세션을 관리합니다.
-- `features/chat/`: 작업 화면, 대화 목록·입력창·메시지 컴포넌트와 기존 `state/chat-store.ts`를 둡니다. 이번 이동에서는 대화별 초안 보존이나 전역 작업 상태 같은 새 기능을 추가하지 않습니다.
+- `features/chat/`: `state/chat-store.ts`는 계정 세션의 전역 작업·알림·대화 선택을, `state/conversation-session.ts`는 대화별 초안·메시지·생성 SSE를 관리합니다. `state/context-status.ts`는 문맥 응답을 검증하고 `components/generation-activity.tsx`·`context-status-panel.tsx`는 작업 메뉴와 문맥 상태를 표시합니다. [ADR 0013](docs/adr/0013-chat-activity-and-context-status.md)을 따릅니다.
 - `features/network/`, `features/usage/`: 네트워크 설정·검색 출처와 토큰 사용량 화면을 각각 관리합니다.
 - `features/preferences/`: 브라우저별 화면 테마와 운영체제 변경·탭 간 동기화를 관리합니다. `app/layout.tsx`의 초기 스크립트가 첫 화면 전에 테마를 적용하며 계정·토큰·네트워크 정책과 독립적입니다.
 - `components/content/`: Markdown 렌더링·링크 정책·복사와 HTTP 환경의 복사 대체 처리를 공유합니다.

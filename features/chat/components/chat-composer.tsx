@@ -101,7 +101,7 @@ export function ChatComposer({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            onSend();
+            if (canSend) onSend();
           }}
           className="rounded-[28px] border border-border/80 bg-card p-2 shadow-[0_2px_12px_rgb(0_0_0/0.04)] transition-[border-color,box-shadow] focus-within:border-foreground/20 focus-within:shadow-[0_3px_18px_rgb(0_0_0/0.06)] sm:p-2.5 dark:border-border/40 dark:bg-muted/80 dark:shadow-none"
         >
@@ -116,7 +116,8 @@ export function ChatComposer({
               if (
                 event.key === 'Enter' &&
                 !event.shiftKey &&
-                !event.nativeEvent.isComposing
+                !event.nativeEvent.isComposing &&
+                canSend
               ) {
                 event.preventDefault();
                 onSend();
@@ -124,9 +125,7 @@ export function ChatComposer({
             }}
             rows={2}
             maxLength={100000}
-            disabled={
-              (isGenerating && !cancelling) || state.sending || logoutPending
-            }
+            disabled={state.sending || logoutPending}
             placeholder="무엇이든 물어보세요"
             aria-label="채팅 메시지"
             className="max-h-[min(12rem,25dvh)] min-h-16 resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-base leading-6 shadow-none placeholder:text-muted-foreground/85 focus-visible:ring-0 disabled:bg-transparent disabled:opacity-70 md:text-base dark:bg-transparent"
@@ -217,7 +216,7 @@ export function ChatComposer({
           </div>
         </form>
         <p className="mt-3 hidden text-center text-[11px] leading-4 text-muted-foreground sm:block">
-          Enter로 전송{' '}
+          {canSend ? 'Enter로 전송' : '다음 질문을 작성할 수 있습니다.'}{' '}
           <span className="mx-1.5" aria-hidden="true">
             ·
           </span>{' '}

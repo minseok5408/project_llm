@@ -401,6 +401,7 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       [GET, 'GET', `/api/v1/conversations/${id}/messages?before=50`],
       [POST, 'POST', `/api/v1/conversations/${id}/messages`],
       [GET, 'GET', `/api/v1/generations/${id}`],
+      [GET, 'GET', '/api/v1/generations/active'],
       [GET, 'GET', `/api/v1/generations/${id}/events?after=27`],
       [POST, 'POST', `/api/v1/generations/${id}/cancel`],
       [POST, 'POST', `/api/v1/generations/${id}/regenerate`],
