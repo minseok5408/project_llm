@@ -99,7 +99,7 @@ async def compaction_rows(schema_database: Database, stored: StoredRows) -> Stor
             idempotency_key=uuid4(),
             request_hash="a" * 64,
             request_messages=[],
-            options={},
+            thinking=False,
             prompt_tokens=0,
             max_output_tokens=1024,
         )
@@ -122,7 +122,7 @@ async def compaction_rows(schema_database: Database, stored: StoredRows) -> Stor
         return StoredCompactionRows(generation.id, compaction.id)
 
 
-async def test_server_uuid_time_defaults_and_json_schema(
+async def test_server_uuid_time_defaults_and_conversation_schema(
     schema_database: Database, stored: StoredRows
 ) -> None:
     identifiers = {
@@ -173,8 +173,8 @@ async def test_server_uuid_time_defaults_and_json_schema(
             .mappings()
             .one()
         )
-        assert conversation["settings"] == {}
-        assert by_column["conversations", "settings"]["data_type"] == "jsonb"
+        assert ("conversations", "settings") not in by_column
+        assert ("messages", "prompt_version") not in by_column
         assert conversation["is_pinned"] is False
         assert conversation["last_message_at"].utcoffset() == timedelta(0)
         assert conversation["deleted_at"] is None
@@ -212,7 +212,6 @@ async def test_database_constraints_reject_invalid_rows(
         "UPDATE conversations SET model = '' WHERE id = :conversation",
         "UPDATE conversations SET model = NULL WHERE id = :conversation",
         "UPDATE conversations SET status = 'unknown' WHERE id = :conversation",
-        "UPDATE conversations SET settings = '[]'::jsonb WHERE id = :conversation",
         "UPDATE conversations SET next_message_sequence = 0 WHERE id = :conversation",
         "UPDATE messages SET sequence = 0 WHERE id = :message",
         "UPDATE messages SET role = 'unknown' WHERE id = :message",

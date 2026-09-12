@@ -29,6 +29,7 @@ class Message(IdentityTimestamps, Base):
             ondelete="CASCADE",
         ),
         UniqueConstraint("conversation_id", "sequence"),
+        UniqueConstraint("conversation_id", "id", name="uq_messages_conversation_identity"),
         CheckConstraint("sequence > 0", name="sequence_positive"),
         CheckConstraint("role IN ('user', 'assistant', 'system')", name="role"),
         CheckConstraint("status IN ('pending', 'completed', 'failed', 'cancelled')", name="status"),
@@ -43,10 +44,6 @@ class Message(IdentityTimestamps, Base):
         CheckConstraint("token_count IS NULL OR token_count >= 0", name="token_count_nonnegative"),
         CheckConstraint(
             "model IS NULL OR char_length(btrim(model)) BETWEEN 1 AND 255", name="model_length"
-        ),
-        CheckConstraint(
-            "prompt_version IS NULL OR char_length(btrim(prompt_version)) BETWEEN 1 AND 255",
-            name="prompt_version_length",
         ),
         Index("ix_messages_workspace_id_conversation_id", "workspace_id", "conversation_id"),
         Index("ix_messages_created_by", "created_by"),
@@ -65,4 +62,3 @@ class Message(IdentityTimestamps, Base):
     )
     token_count: Mapped[int | None] = mapped_column(BigInteger)
     model: Mapped[str | None] = mapped_column(String(255))
-    prompt_version: Mapped[str | None] = mapped_column(String(255))

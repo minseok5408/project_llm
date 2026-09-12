@@ -7,11 +7,14 @@ from sqlalchemy import select
 from backend.app.models import (
     Conversation,
     GenerationRun,
+    GenerationStep,
     Message,
     TokenReservation,
     User,
 )
 from backend.app.repositories import Conflict
+from backend.app.runtime.progress import advance_progress, finish_progress
+from backend.app.runtime.steps import complete_step, step_payload
 from backend.app.services.generations.events import TERMINAL_STATUSES, add_event, now
 from backend.app.services.token_quota import TokenQuotaService
 
@@ -47,6 +50,7 @@ class SettlementMixin:
         received_output_tokens: int | None = None,
         finish_reason: str | None = None,
         error_message: str | None = None,
+        question_card: dict | None = None,
     ) -> None:
         async with self.database.session() as session:
             initial = await session.get(GenerationRun, run_id)
@@ -93,6 +97,57 @@ class SettlementMixin:
                 )
                 and output_tokens <= run.max_output_tokens
             )
+            answer_output_tokens = output_tokens if has_usage else 0
+            steps = list(
+                (
+                    await session.scalars(
+                        select(GenerationStep)
+                        .where(GenerationStep.generation_id == run.id)
+                        .order_by(GenerationStep.sequence)
+                    )
+                ).all()
+            )
+            if steps:
+                for step in steps:
+                    if step.status == "running":
+                        is_answer = step.name == "answer"
+                        complete_step(
+                            step,
+                            cancelled=run.cancel_requested,
+                            status="cancelled"
+                            if run.cancel_requested
+                            else (
+                                "failed"
+                                if error_code or not has_usage or not is_answer
+                                else "completed"
+                            ),
+                            reason=error_code,
+                            input_tokens=input_tokens if is_answer and has_usage else None,
+                            output_tokens=output_tokens if is_answer and has_usage else None,
+                            received_output_tokens=(received_output_tokens or 0)
+                            if is_answer
+                            else 0,
+                        )
+                        if is_answer and has_usage and usage_basis == "received":
+                            step.usage_basis = "received"
+                        if not is_answer:
+                            advance_progress(run, str(step.id), step.status, name=step.name)
+                        add_event(session, run, "meta", {"step": step_payload(step)})
+                # 준비 호출이 끝난 뒤 답변 시작 전에 중단·장애가 나도 확인된 사용량은 보존한다.
+                if any(step.input_tokens + step.output_tokens for step in steps):
+                    if not has_usage and not run.cancel_requested:
+                        error_code = error_code or "usage_mismatch"
+                    input_tokens = sum(step.input_tokens for step in steps)
+                    output_tokens = sum(step.output_tokens for step in steps)
+                    usage_basis = (
+                        "received"
+                        if any(step.usage_basis == "received" for step in steps)
+                        else "provider"
+                    )
+                    has_usage = True
+                    answer_output_tokens = sum(
+                        step.output_tokens for step in steps if step.name == "answer"
+                    )
             if has_usage:
                 await quota.settle(
                     request_key=f"generation:{run.id}",
@@ -123,6 +178,7 @@ class SettlementMixin:
                     )
                 else:
                     run.status, assistant.status = "completed", "completed"
+                    run.question_card = question_card
                     add_event(
                         session,
                         run,
@@ -135,7 +191,8 @@ class SettlementMixin:
                             else None,
                         },
                     )
-                assistant.token_count = output_tokens
+                # 메시지 토큰 수는 최종 답변만, 회계·종료 이벤트는 모든 모델 호출의 합계다.
+                assistant.token_count = answer_output_tokens
             elif never_started:
                 await quota.release(request_key=f"generation:{run.id}")
                 run.status, assistant.status = "failed", "failed"
@@ -182,6 +239,7 @@ class SettlementMixin:
                     },
                 )
             run.error_code, run.request_messages = error_code, []
+            finish_progress(run)
             # 복구 시각은 새 이벤트와 회계 기록에 남기고 원래 생성 종료 시각은 보존한다.
             if not recovering:
                 run.completed_at = now()

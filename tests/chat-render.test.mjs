@@ -521,14 +521,12 @@ describe('답변 작업과 이전 버전 표시', () => {
       assert.match(rendered, /<button type="button" disabled=""[^>]*title=/);
     }
   });
-  it('이전 답변은 접어서 원문을 보존하고 재생성 버튼을 숨긴다', () => {
+  it('선택한 이전 답변은 원문을 바로 표시하고 재생성 버튼을 숨긴다', () => {
     const rendered = message({
       message: { ...base.message, is_current: false },
     });
-    assert.match(rendered, /<details\b[^>]*><summary/);
-    assert.match(rendered, /이전 답변/);
+    assert.doesNotMatch(rendered, /<details/);
     assert.match(rendered, /<strong>답변<\/strong>/);
-    assert.equal(rendered.includes('<details open'), false);
     assert.equal(rendered.includes('다시 생성'), false);
   });
   it('사용자 본문은 Markdown 원문으로 보존하고 사용자 이름을 표시한다', () => {
@@ -640,7 +638,7 @@ describe('검색 상태와 출처의 안전한 표시', () => {
       ['cancelled', 'local_only', '웹검색이 중단'],
       ['omitted', 'context_limit', '이번 답변에 포함하지 못했'],
       ['disabled', 'mode_changed', '설정이 변경되어 웹검색을 중단'],
-      ['disabled', 'forced_local', '로컬 전용 모드로 웹검색을 사용하지 않았'],
+      ['disabled', 'forced_local', '로컬 모드로 처리해 웹검색을 사용하지 않았'],
       ['disabled', 'search_off', '웹검색을 끄고 로컬 지식으로'],
     ]) {
       const result = render({ ...search, status, reason, sources: [] });
@@ -668,12 +666,13 @@ describe('검색 상태와 출처의 안전한 표시', () => {
     const old = message({
       message: { ...base.message, is_current: false, search },
     });
-    assert.match(old, /<details\b[^>]*><summary/);
+    assert.equal((old.match(/<details\b/g) ?? []).length, 1);
+    assert.doesNotMatch(old, /group\/version/);
     assert.match(old, /공식 문서/);
   });
 });
 
-describe('네트워크 모드 화면', () => {
+describe('데이터 사용 화면', () => {
   const value = {
     local_only: false,
     revision: 1,
@@ -687,31 +686,33 @@ describe('네트워크 모드 화면', () => {
     loading: false,
     saving: false,
     checking: false,
-    webSearch: 'auto',
     error: null,
   };
   const render = (patch = {}) =>
     renderToStaticMarkup(
       createElement(NetworkModeSwitch, {
         state: { ...state, ...patch },
-        onLocalOnly() {},
+        onDataUsage() {},
         onCheck() {},
-        onWebSearch() {},
       }),
     );
 
-  it('기본은 로컬 전용 OFF이며 자동·항상 검색·검색 안 함을 제공한다', () => {
+  it('데이터 사용 ON 스위치 하나로 웹검색을 안내하고 별도 선택 상자는 표시하지 않는다', () => {
     const result = render();
-    assert.match(result, /role="switch" aria-checked="false"/);
-    assert.match(result, /로컬 전용 OFF/);
+    assert.match(result, /role="switch" aria-checked="true"/);
+    assert.match(result, /데이터 사용 ON/);
     assert.match(result, /온라인/);
-    assert.match(result, /value="auto" selected=""/);
-    assert.match(result, /항상 검색/);
-    assert.match(result, /검색 안 함/);
+    assert.equal((result.match(/role="switch"/g) ?? []).length, 1);
+    assert.doesNotMatch(result, /<select|로컬 전용|항상 검색|검색 안 함/);
+    assert.match(
+      result,
+      /최신 정보나 검색 요청 등 필요한 질문에만 웹검색을 사용/,
+    );
+    assert.match(result, /인사와 기초 질문은 로컬로 답/);
     assert.match(result, /외부 검색 서비스에 전달/);
   });
 
-  it('로컬 전용 ON은 검색 선택을 막고 외부 연결 확인도 하지 않음을 설명한다', () => {
+  it('데이터 사용 OFF는 웹검색과 외부 연결 확인을 하지 않음을 설명한다', () => {
     const result = render({
       value: {
         ...value,
@@ -720,17 +721,41 @@ describe('네트워크 모드 화면', () => {
         reason: 'forced_local',
       },
     });
-    assert.match(result, /role="switch" aria-checked="true"/);
-    assert.match(result, /<select[^>]*disabled=""/);
+    assert.match(result, /role="switch" aria-checked="false"/);
+    assert.match(result, /데이터 사용 OFF/);
+    assert.doesNotMatch(result, /<select/);
     assert.match(result, /웹검색과 외부 연결 확인을 사용하지 않습니다/);
   });
 
-  it('설정 오류 때 실제 OFF를 보존하면서 로컬 동작과 저장 실패를 안내한다', () => {
+  it('설정 오류 때 저장된 ON 선택을 보존하면서 로컬 동작과 저장 실패를 안내한다', () => {
     const result = render({ error: '설정을 저장하지 못했습니다.' });
-    assert.match(result, /aria-checked="false"/);
+    assert.match(result, /aria-checked="true"/);
     assert.match(result, /role="alert"/);
     assert.match(result, /로컬로 답합니다/);
     assert.match(result, /설정을 저장하지 못했/);
     assert.doesNotMatch(result, />온라인</);
+  });
+
+  it('초기 확인 전에는 OFF와 비활성 스위치를 보여 주며 로컬 동작을 안내한다', () => {
+    const result = render({ value: null, loading: true });
+    assert.match(result, /role="switch" aria-checked="false"[^>]*disabled=""/);
+    assert.match(result, /데이터 사용 OFF/);
+    assert.match(result, /확인하는 동안 로컬로 답합니다/);
+    assert.doesNotMatch(result, />온라인</);
+  });
+
+  it('스위치 클릭은 표시한 데이터 사용 선택의 반대 값을 전달한다', () => {
+    for (const enabled of [true, false]) {
+      const changes = [];
+      const element = NetworkModeSwitch({
+        state: { ...state, value: { ...value, local_only: !enabled } },
+        onDataUsage: (next) => changes.push(next),
+        onCheck() {},
+      });
+      const toggle = element.props.children[1].props.children;
+      assert.equal(toggle.props['aria-checked'], enabled);
+      toggle.props.onClick();
+      assert.deepEqual(changes, [!enabled]);
+    }
   });
 });

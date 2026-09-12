@@ -10,16 +10,28 @@ import asyncpg
 from sqlalchemy import select
 from sqlalchemy.engine import make_url
 
+from backend.app.context.local import LocalContextService
 from backend.app.context.service import CompactionService
 from backend.app.context.status import context_status
+from backend.app.files.context import FileContextService
+from backend.app.files.indexing import FileIndexer
 from backend.app.llm.protocol import ProviderUnavailable
 from backend.app.models import GenerationRun
 from backend.app.repositories import AccessDenied, InvalidInput, Repository
 from backend.app.runtime.cancellation import GenerationCancelled
+from backend.app.runtime.contracts import GenerationJob, ModelExecution
+from backend.app.runtime.progress import advance_progress
+from backend.app.runtime.steps import StepLimitExceeded, StepService
 from backend.app.schemas import ChatMessage, GenerationOptions
 from backend.app.services.generations import GenerationService
 from backend.app.services.generations.events import add_event, now
 from backend.app.services.token_quota import QuotaExceeded
+from backend.app.tools.questions import (
+    QUESTION_TOOLS,
+    parse_question_card,
+    prepare_questions,
+    question_text,
+)
 from backend.app.tools.web_search.service import WebSearchService
 
 logger = logging.getLogger(__name__)
@@ -31,6 +43,7 @@ class GenerationWorker:
 
     def __init__(self, service: GenerationService):
         self.service = service
+        self.files = FileIndexer(service.database, service.settings)
         self.task: asyncio.Task | None = None
         self.connection: asyncpg.Connection | None = None
         self.worker_id = uuid4()
@@ -47,7 +60,7 @@ class GenerationWorker:
             self.task.cancel()
             await asyncio.gather(self.task, return_exceptions=True)
 
-    async def claim(self) -> dict | None:
+    async def claim(self) -> GenerationJob | None:
         database = self.service.database
         async with database.session() as session:
             run = await session.scalar(
@@ -60,15 +73,17 @@ class GenerationWorker:
             if run is None:
                 return None
             run.status, run.started_at = "running", now()
-            add_event(session, run, "meta", {"status": "running"})
-            result = {
+            advance_progress(run, "context", "running")
+            add_event(session, run, "meta", {"status": "running", "progress": run.progress})
+            result: GenerationJob = {
                 "id": run.id,
                 "messages": list(run.request_messages),
-                "options": dict(run.options),
+                "options": {"thinking": run.thinking, "max_tokens": run.max_output_tokens},
                 "user_id": run.user_id,
                 "workspace_id": run.workspace_id,
                 "conversation_id": run.conversation_id,
                 "prompt_tokens": run.prompt_tokens,
+                "memory_dependencies": dict(run.memory_dependencies),
                 "context_compaction_needed": run.context_compaction_needed,
                 "network_mode": run.network_mode,
                 "network_revision": run.network_revision,
@@ -77,13 +92,27 @@ class GenerationWorker:
             await session.commit()
             return result
 
-    async def execute(self, job: dict) -> None:
+    def _model_execution(self) -> ModelExecution:
+        # 작업 시작 시 현재 공급자를 가져와 교체된 모델이 다음 실행에 반영되게 한다.
+        return ModelExecution(self.service.database, self.service.provider, self.service.settings)
+
+    def _web_search(self, execution: ModelExecution) -> WebSearchService:
+        return WebSearchService(
+            execution,
+            search_provider=self.service.search_provider,
+            network_mode=self.service.network_mode,
+        )
+
+    async def execute(self, job: GenerationJob) -> None:
+        execution = self._model_execution()
+        ledger = StepService(execution.database, execution.settings)
         run_id, buffer, usage = job["id"], "", None
         last_flush, offset = monotonic(), 0
         received_output_tokens = 0
         answer_started = False
         cancelled = False
         finish_reason = None
+        question_card = None
         signal = self.service.cancel_events.setdefault(run_id, asyncio.Event())
 
         async def wait_for_cancel():
@@ -104,6 +133,17 @@ class GenerationWorker:
                     pass
 
         cancellation = asyncio.create_task(wait_for_cancel())
+
+        async def record_progress(key: str, status: str):
+            async with self.service.database.session() as session:
+                run = await session.scalar(
+                    select(GenerationRun).where(GenerationRun.id == run_id).with_for_update()
+                )
+                if run.cancel_requested or run.status != "running":
+                    raise GenerationCancelled
+                advance_progress(run, key, status, name=key)
+                add_event(session, run, "meta", {"progress": run.progress})
+                await session.commit()
 
         def settlement():
             if usage is not None:
@@ -145,7 +185,9 @@ class GenerationWorker:
                 )
             if job.get("context_compaction_needed"):
                 try:
-                    job = await CompactionService(self.service).prepare(job, cancellation)
+                    await record_progress("compaction", "running")
+                    job = await CompactionService(execution).prepare(job, cancellation)
+                    await record_progress("compaction", "completed")
                 except GenerationCancelled:
                     cancelled = True
                     await finish_error("user_cancelled")
@@ -175,7 +217,7 @@ class GenerationWorker:
                     )
                     return
             try:
-                job = await WebSearchService(self.service).prepare(job, cancellation)
+                job = await self._web_search(execution).prepare(job, cancellation)
                 if cancellation.done():
                     cancellation.result()
                     raise GenerationCancelled
@@ -183,6 +225,11 @@ class GenerationWorker:
                 cancelled = True
                 await finish_error("user_cancelled", never_started=True)
                 return
+            job = await LocalContextService(execution).prepare(job, cancellation)
+            job = await FileContextService(execution, self.files.embeddings).prepare(
+                job, cancellation
+            )
+            job, questions_enabled = await prepare_questions(execution, job, cancellation)
             messages = [ChatMessage.model_validate(message) for message in job["messages"]]
             options = GenerationOptions.model_validate(job["options"])
             async with self.service.database.session() as session:
@@ -190,6 +237,8 @@ class GenerationWorker:
                     select(GenerationRun).where(GenerationRun.id == run_id).with_for_update()
                 )
                 context = await context_status(session, run)
+                advance_progress(run, "context", "completed")
+                add_event(session, run, "meta", {"progress": run.progress})
                 if context is not None:
                     context.update(
                         phase="ready",
@@ -198,9 +247,21 @@ class GenerationWorker:
                         context_window=self.service.settings.llm_context_window,
                     )
                     add_event(session, run, "meta", {"stage": "generating", "context": context})
-                    await session.commit()
+                await session.commit()
+            answer_step = await ledger.start(
+                job,
+                kind="llm",
+                name="answer",
+                prompt_tokens=job["prompt_tokens"],
+                max_output_tokens=options.max_tokens,
+            )
             answer_started = True
-            async with aclosing(self.service.provider.stream(messages, options)) as stream:
+            answer_stream = (
+                execution.provider.stream_tools(messages, options, QUESTION_TOOLS)
+                if questions_enabled
+                else execution.provider.stream(messages, options)
+            )
+            async with aclosing(answer_stream) as stream:
                 pending = None
                 try:
                     while True:
@@ -224,6 +285,21 @@ class GenerationWorker:
                             if delta.final:
                                 usage = (delta.input_tokens, delta.output_tokens)
                                 finish_reason = delta.finish_reason
+                                # 종료 이벤트 전에 확정 사용량을 영속화해 복구 시 보존한다.
+                                await ledger.close(
+                                    job,
+                                    answer_step,
+                                    status="completed",
+                                    input_tokens=delta.input_tokens,
+                                    output_tokens=delta.output_tokens,
+                                    received_output_tokens=received_output_tokens,
+                                )
+                                if questions_enabled and not cancelled:
+                                    question_card = parse_question_card(delta)
+                                    if question_card:
+                                        buffer += (
+                                            "\n\n" if offset or buffer else ""
+                                        ) + question_text(question_card)
                             if not cancelled:
                                 buffer += delta.text
                                 if (
@@ -249,6 +325,7 @@ class GenerationWorker:
                 usage_basis=usage_basis,
                 received_output_tokens=received_output_tokens,
                 finish_reason=finish_reason,
+                question_card=question_card,
             )
         except asyncio.CancelledError:
             # 취소 직전 커밋한 청크는 offset으로 중복 저장하지 않고 확정 사용량도 보존한다.
@@ -256,6 +333,11 @@ class GenerationWorker:
             raise
         except AccessDenied:
             await finish_error("access_revoked", never_started=True)
+        except GenerationCancelled:
+            cancelled = True
+            await finish_error("user_cancelled")
+        except StepLimitExceeded:
+            await finish_error("step_limit", never_started=not answer_started)
         except ProviderUnavailable as error:
             await finish_error("provider_unavailable", never_started=not error.request_started)
         except Exception as error:
@@ -267,6 +349,7 @@ class GenerationWorker:
             self.service.cancel_events.pop(run_id, None)
 
     async def recover(self) -> None:
+        execution = self._model_execution()
         async with self.service.database.session() as session:
             ids = list(
                 (
@@ -278,8 +361,9 @@ class GenerationWorker:
         # 이전 실행자의 DB 잠금이 사라진 뒤에도 모델 실제 사용량은 추측하지 않는다.
         for run_id in ids:
             await self.service.finish(run_id, error_code="worker_interrupted")
-        await CompactionService(self.service).recover()
-        await WebSearchService(self.service).recover()
+        await CompactionService(execution).recover()
+        await self._web_search(execution).recover()
+        await self.files.recover()
         await self.service.recover_unsettled()
 
     def check_heartbeat(self) -> None:
@@ -336,7 +420,8 @@ class GenerationWorker:
                         self.check_heartbeat()
                         job = await self.claim()
                         if job is None:
-                            await asyncio.sleep(0.05)
+                            if not await self.files.process_next():
+                                await asyncio.sleep(0.25)
                         else:
                             self.current_generation_id = job["id"]
                             try:

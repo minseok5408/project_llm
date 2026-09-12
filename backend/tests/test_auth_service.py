@@ -100,7 +100,7 @@ async def test_signup_stores_hashes_and_session_expires_after_absolute_24_hours(
 async def test_login_errors_do_not_reveal_missing_disabled_or_wrong_password_accounts(
     schema_database, caplog
 ) -> None:
-    caplog.set_level(logging.INFO, logger="backend.app.repositories.core")
+    caplog.set_level(logging.INFO, logger="backend.app.repositories.operations")
     first = await signup(schema_database)
     errors = []
     for email, password in [

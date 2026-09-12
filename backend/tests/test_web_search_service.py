@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.app.config import Settings
 from backend.app.runtime.cancellation import GenerationCancelled
+from backend.app.runtime.contracts import ModelExecution
 from backend.app.tools.web_search.service import WebSearchService
 
 
@@ -26,11 +28,9 @@ async def test_guard_closes_unstarted_operation_when_cancelled(cancel_during_per
     if not cancel_during_permission:
         await cancellation
     service = WebSearchService(
-        SimpleNamespace(
-            database=None,
-            settings=None,
-            network_mode=SimpleNamespace(is_allowed=AsyncMock(side_effect=permission)),
-        )
+        ModelExecution(AsyncMock(), AsyncMock(), Settings(_env_file=None)),
+        search_provider=AsyncMock(),
+        network_mode=SimpleNamespace(is_allowed=AsyncMock(side_effect=permission)),
     )
     with pytest.raises(GenerationCancelled):
         await service._guarded(operation(), {"user_id": 1, "network_revision": 0}, cancellation)
@@ -38,7 +38,11 @@ async def test_guard_closes_unstarted_operation_when_cancelled(cancel_during_per
 
 
 async def test_preparation_failure_always_closes_pending_search():
-    service = WebSearchService(SimpleNamespace(database=None, settings=None))
+    service = WebSearchService(
+        ModelExecution(AsyncMock(), AsyncMock(), Settings(_env_file=None)),
+        search_provider=AsyncMock(),
+        network_mode=AsyncMock(),
+    )
     service._prepare = AsyncMock(side_effect=RuntimeError("검증용 실패"))
     service._close_pending = AsyncMock()
     with pytest.raises(RuntimeError):

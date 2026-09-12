@@ -1,9 +1,9 @@
+import type { RequestFn } from '../../../lib/http.ts';
 import { ConversationSession, INITIAL_STATE } from './conversation-session.ts';
 import type {
   ConversationState,
   Conversation,
   Generation,
-  RequestFn,
 } from './conversation-session.ts';
 import type { GenerationNetworkPolicy } from '../../network/state/network-mode-store.ts';
 
@@ -263,7 +263,25 @@ export class ChatStore {
     this.publish();
     if (navigate) this.navigate(id);
     const state = session.getSnapshot();
-    if (state.generation || state.sending || state.loading) return;
+    if (state.loading) {
+      // 같은 대화의 첫 조회가 진행 중이면 검색 위치 이동도 그 완료를 기다린다.
+      const waiting = session;
+      const lifetime = this.lifetime.signal;
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          unsubscribe();
+          lifetime.removeEventListener('abort', finish);
+          resolve();
+        };
+        const unsubscribe = waiting.subscribe(() => {
+          if (!waiting.getSnapshot().loading) finish();
+        });
+        lifetime.addEventListener('abort', finish, { once: true });
+        if (lifetime.aborted || !waiting.getSnapshot().loading) finish();
+      });
+      return;
+    }
+    if (state.generation || state.sending) return;
     await session.openConversation(id, false, true);
   };
 
@@ -308,14 +326,48 @@ export class ChatStore {
       ? this.current.continueAnswer(...args)
       : Promise.resolve(false);
   setDraft = (draft: string) => this.current.setDraft(draft);
+  setQuestionAnswer: ConversationSession['setQuestionAnswer'] = (...args) =>
+    this.current.setQuestionAnswer(...args);
+  respondToQuestions: ConversationSession['respondToQuestions'] = (...args) =>
+    this.canSubmit()
+      ? this.current.respondToQuestions(...args)
+      : Promise.resolve(false);
+  uploadFile: ConversationSession['uploadFile'] = (...args) =>
+    this.current.uploadFile(...args);
+  changeFile: ConversationSession['changeFile'] = (...args) =>
+    this.current.changeFile(...args);
+  refreshFiles = () => this.current.refreshFiles();
   clearError = () => this.current.clearError();
   refreshUsage = () => this.current.refreshUsage();
   loadConversations = (more = false) => this.current.loadConversations(more);
   setFilter = (filter: 'active' | 'archived') => this.current.setFilter(filter);
   olderMessages = () => this.current.olderMessages();
+  newerMessages = () => this.current.newerMessages();
+  latestMessages = () => this.current.latestMessages();
+  revealMessage = (id: string) => this.current.revealMessage(id);
   updateConversation = (
     patch: Partial<Pick<Conversation, 'title' | 'is_pinned' | 'status'>>,
-  ) => this.current.updateConversation(patch);
+    id = this.state.selected?.id,
+  ) => this.updateConversationById(patch, id);
+  private async updateConversationById(
+    patch: Partial<Pick<Conversation, 'title' | 'is_pinned' | 'status'>>,
+    id: string | undefined,
+  ) {
+    if (!id) return false;
+    if (!(await this.current.updateConversation(patch, id))) return false;
+    for (const session of this.sessions) {
+      const state = session.getSnapshot();
+      session.seed({
+        ...(state.selected?.id === id
+          ? { selected: { ...state.selected, ...patch } }
+          : {}),
+        conversations: state.conversations
+          .map((item) => (item.id === id ? { ...item, ...patch } : item))
+          .filter((item) => item.status === state.filter),
+      });
+    }
+    return true;
+  }
   cancel = () => this.current.cancel();
   reconnect = () => this.current.reconnect();
   cancelTask = (id: string) => this.conversations.get(id)?.cancel();
@@ -324,23 +376,36 @@ export class ChatStore {
     this.notifications = this.notifications.filter((item) => item.id !== id);
     this.publish();
   };
-  deleteConversation = async () => {
-    const session = this.current;
-    const id = session.getSnapshot().selected?.id;
-    await session.deleteConversation();
-    if (id && !session.getSnapshot().selected) {
+  deleteConversation = async (id = this.state.selected?.id) => {
+    if (!id) return false;
+    if (!(await this.current.deleteConversation(id))) return false;
+    const session = this.conversations.get(id);
+    if (
+      session &&
+      (session.getSnapshot().selected?.id === id ||
+        session.getSnapshot().loading)
+    )
+      session.newDraft();
+    if (id) {
       this.conversations.delete(id);
       this.notifications = this.notifications.filter(
         (item) => item.conversationId !== id,
       );
-      if (this.current === session)
+      if (session && this.current === session)
         this.drafts.set(session.getSnapshot().workspaceId, session);
-      else {
+      else if (session) {
         this.sessions.delete(session);
         session.dispose();
       }
+      for (const remaining of this.sessions) {
+        const state = remaining.getSnapshot();
+        remaining.seed({
+          conversations: state.conversations.filter((item) => item.id !== id),
+        });
+      }
       this.publish();
     }
+    return true;
   };
   refresh = async () => {
     await this.current.refresh();

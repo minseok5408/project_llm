@@ -11,6 +11,7 @@ from backend.app.context.compaction import SUMMARY_PROMPT
 from backend.app.context.service import latest_summary
 from backend.app.llm.protocol import ProviderDelta
 from backend.app.models import Conversation, ConversationCompaction, GenerationRun, Message
+from backend.app.schemas import GenerationOptions
 from backend.tests.test_generations import Account, Harness, balance, snapshot
 from backend.tests.test_generations import harness as harness
 
@@ -23,7 +24,9 @@ class CompactionProvider:
     def __init__(self):
         self.summary_mode = "normal"
         self.answer_calls = []
+        self.answer_options = []
         self.summary_calls = []
+        self.summary_options = []
         self.summary_started = asyncio.Event()
         self.summary_release = asyncio.Event()
         self.summary_closed = asyncio.Event()
@@ -51,6 +54,7 @@ class CompactionProvider:
         prompt_tokens = await self.count_input(messages, options)
         if self.is_summary(messages):
             self.summary_calls.append([message.model_dump() for message in messages])
+            self.summary_options.append(options)
             try:
                 if self.summary_mode == "blocked":
                     yield ProviderDelta(text="아직 작성 중인 요약", received_output_tokens=1)
@@ -81,6 +85,7 @@ class CompactionProvider:
                 self.summary_closed.set()
             return
         self.answer_calls.append([message.model_dump() for message in messages])
+        self.answer_options.append(options)
         yield ProviderDelta(text=f"정상 답변 {len(self.answer_calls)}", received_output_tokens=5)
         yield ProviderDelta(
             input_tokens=prompt_tokens,
@@ -161,20 +166,28 @@ async def checkpoint(harness: Harness, account: Account) -> tuple[str | None, in
         return await latest_summary(session, conversation)
 
 
+@pytest.mark.parametrize("thinking", [False, True])
 async def test_automatic_compaction_keeps_originals_and_reuses_summary_once(
     harness: Harness,
+    thinking: bool,
 ) -> None:
     provider = install_provider(harness)
     await seed(harness, harness.system)
     originals = await message_rows(harness, harness.system)
     enable_compaction(harness)
-    request = await harness.submit(content="내 이름과 직업을 알려줘")
+    request = await harness.submit(
+        content="내 이름과 직업을 알려줘",
+        options=GenerationOptions(thinking=thinking, max_tokens=64),
+    )
     assert (await snapshot(harness.database, request["id"])).run.context_compaction_needed
     await harness.execute_next()
 
     result = await snapshot(harness.database, request["id"])
     summaries = await attempts(harness, harness.system)
     assert result.run.status == "completed"
+    assert result.run.thinking is provider.answer_options[-1].thinking is thinking
+    assert result.run.max_output_tokens == provider.answer_options[-1].max_tokens
+    assert all(option.thinking is False for option in provider.summary_options)
     assert len(summaries) == len(provider.summary_calls) == 1
     assert summaries[0].status == "completed"
     assert summaries[0].through_sequence == 4

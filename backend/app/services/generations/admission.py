@@ -12,7 +12,8 @@ from backend.app.context.builder import (
     list_context_turns,
 )
 from backend.app.context.compaction import count_context
-from backend.app.context.service import latest_summary
+from backend.app.context.dependencies import check_dependencies, merge_dependencies
+from backend.app.context.service import latest_summary, latest_summary_record
 from backend.app.context.status import context_measurement
 from backend.app.models import (
     Conversation,
@@ -21,7 +22,9 @@ from backend.app.models import (
     User,
 )
 from backend.app.repositories import AccessDenied, Conflict, InvalidInput, Repository
-from backend.app.repositories.core import logged, required_text
+from backend.app.repositories.operations import logged
+from backend.app.repositories.validation import required_text
+from backend.app.runtime.progress import initial_progress
 from backend.app.schemas import ChatMessage, GenerationOptions
 from backend.app.services.generations.events import (
     ACTIVE_STATUSES,
@@ -32,6 +35,7 @@ from backend.app.services.generations.events import (
 )
 from backend.app.services.monthly_allowance import MonthlyAllowanceService
 from backend.app.services.token_quota import QuotaExceeded, TokenQuotaService
+from backend.app.tools.questions import QuestionAnswers, QuestionCard
 from backend.app.tools.web_search.context import should_search
 
 ADMISSION_LOCK = 7160524630128422
@@ -50,6 +54,58 @@ async def context_messages(
 
 
 class AdmissionMixin:
+    async def respond(
+        self,
+        actor_id: UUID,
+        run_id: UUID,
+        *,
+        answers: list[str],
+        options: GenerationOptions,
+        idempotency_key: UUID,
+        network_mode: str | None = None,
+        web_search: str = "auto",
+    ) -> dict:
+        """저장된 질문과 사용자 답을 묶고 새 생성 승인과 카드 응답을 한 번에 확정한다."""
+        async with self.database.session() as session:
+            run = await accessible_run(session, actor_id, run_id)
+            if run.user_id != actor_id:
+                raise AccessDenied("본인의 질문 카드에만 답할 수 있습니다.")
+            if not run.question_card:
+                raise Conflict("응답할 질문 카드가 없습니다.")
+            card = QuestionCard.model_validate({"questions": run.question_card["questions"]})
+            answers = QuestionAnswers(answers=answers).answers
+            if len(answers) != len(card.questions):
+                raise InvalidInput("모든 질문에 답해 주세요.")
+            # 모델이 만든 질문은 이전 assistant 원문으로만 참고한다. 이를 사용자 발언에
+            # 복제하면 기억에서 나온 질문 표현이 이후 외부 검색 후보로 바뀔 수 있다.
+            # 번호만 붙여 서버 안내문의 언어가 사용자 응답 언어로 오인되지 않게 한다.
+            content = "\n\n".join(f"{index + 1}. {answer}" for index, answer in enumerate(answers))
+            conversation_id = run.conversation_id
+        return await self.submit(
+            actor_id,
+            conversation_id,
+            content=content,
+            options=options,
+            idempotency_key=idempotency_key,
+            network_mode=network_mode,
+            web_search=web_search,
+            question_generation_id=run_id,
+            question_answers=answers,
+        )
+
+    async def _question_target(
+        self, session: AsyncSession, actor_id: UUID, conversation: Conversation, run_id: UUID
+    ) -> GenerationRun:
+        run = await self._regeneration_target(session, actor_id, conversation, run_id)
+        if (
+            run.status != "completed"
+            or not run.question_card
+            or run.question_card.get("response_generation_id")
+            or not await check_dependencies(session, run.memory_dependencies)
+        ):
+            raise Conflict("이미 응답했거나 더 이상 유효하지 않은 질문 카드입니다.")
+        return run
+
     async def regenerate(
         self,
         actor_id: UUID,
@@ -112,6 +168,8 @@ class AdmissionMixin:
         options: GenerationOptions,
         idempotency_key: UUID,
         supersedes_generation_id: UUID | None = None,
+        question_generation_id: UUID | None = None,
+        question_answers: list[str] | None = None,
         network_mode: str | None = None,
         web_search: str = "auto",
     ) -> dict:
@@ -125,6 +183,11 @@ class AdmissionMixin:
                     "conversation_id": str(conversation_id),
                     "content": content,
                     "options": options.model_dump(),
+                    **(
+                        {"question_generation_id": str(question_generation_id)}
+                        if question_generation_id
+                        else {}
+                    ),
                     **({"network_mode": network_mode} if network_mode is not None else {}),
                     **({"web_search": web_search} if web_search != "auto" else {}),
                     **(
@@ -154,6 +217,8 @@ class AdmissionMixin:
                 return run_payload(existing)
             if conversation.status != "active":
                 raise Conflict("보관한 대화에는 메시지를 보낼 수 없습니다.")
+            if question_generation_id:
+                await self._question_target(session, actor_id, conversation, question_generation_id)
             if conversation.model != self.settings.llm_model_id:
                 raise Conflict("이 대화의 모델과 현재 모델이 다릅니다. 새 대화를 시작하세요.")
             if await session.scalar(
@@ -166,7 +231,11 @@ class AdmissionMixin:
                 .limit(1)
             ):
                 raise QueueFull("이미 진행 중인 응답이 있습니다. 완료 후 다시 보내세요.")
-            summary, through = await latest_summary(session, conversation)
+            summary_row = await latest_summary_record(session, conversation)
+            summary, through = (
+                (summary_row.content, summary_row.through_sequence) if summary_row else (None, 0)
+            )
+            memory_revision = (await session.get(User, actor_id)).memory_revision
             turns = await list_context_turns(session, conversation, after_sequence=through)
             if supersedes_generation_id:
                 previous = await self._regeneration_target(
@@ -175,6 +244,9 @@ class AdmissionMixin:
                 original = await session.get(Message, previous.user_message_id)
                 # 다시 답할 질문과 이전 답변은 이력에서 빼고 현재 사용자 입력으로 한 번만 넣는다.
                 turns = [turn for turn in turns if turn.user_sequence != original.sequence]
+            dependencies = dict(summary_row.memory_dependencies) if summary_row else {}
+            for turn in turns:
+                dependencies = merge_dependencies(dependencies, turn.memory_dependencies)
             context = compose_context(turns, content, summary)
             version = conversation.next_message_sequence
         too_many_chars = (
@@ -216,10 +288,14 @@ class AdmissionMixin:
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(:key)"), {"key": ADMISSION_LOCK}
             )
-            await session.scalar(select(User).where(User.id == actor_id).with_for_update())
+            actor = await session.scalar(select(User).where(User.id == actor_id).with_for_update())
+            if actor.memory_revision != memory_revision or not await check_dependencies(
+                session, dependencies
+            ):
+                raise Conflict("기억이 변경되었습니다. 다시 보내세요.")
             repository = Repository(session, actor_id)
             conversation = await repository.get_conversation_by_id(conversation_id)
-            await repository._require_membership(conversation.workspace_id, lock=True)
+            await repository.require_membership(conversation.workspace_id, lock=True)
             conversation = await session.scalar(
                 select(Conversation)
                 .where(Conversation.id == conversation_id)
@@ -241,6 +317,11 @@ class AdmissionMixin:
             if conversation.next_message_sequence != version:
                 raise Conflict("대화가 변경되었습니다. 내용을 새로 불러온 뒤 다시 보내세요.")
             previous = None
+            question_run = None
+            if question_generation_id:
+                question_run = await self._question_target(
+                    session, actor_id, conversation, question_generation_id
+                )
             if supersedes_generation_id:
                 previous = await self._regeneration_target(
                     session, actor_id, conversation, supersedes_generation_id
@@ -277,8 +358,30 @@ class AdmissionMixin:
                 effective_options = options.model_copy(
                     update={"max_tokens": min(options.max_tokens, available_output)}
                 )
+            from backend.app.models import Document, DocumentVersion
+
+            file_states = (
+                list(
+                    (
+                        await session.scalars(
+                            select(DocumentVersion.status)
+                            .join(Document)
+                            .where(
+                                Document.conversation_id == conversation_id,
+                                Document.deleted_at.is_(None),
+                            )
+                        )
+                    ).all()
+                )
+                if self.settings.file_rag_enabled
+                else []
+            )
+            if any(state != "ready" for state in file_states):
+                raise Conflict(
+                    "첨부 파일 준비가 끝난 뒤 보내세요. 실패한 파일은 재시도하거나 삭제해 주세요."
+                )
             authorized_tokens = prompt_tokens + effective_options.max_tokens
-            if compaction_needed or search_possible:
+            if compaction_needed or search_possible or through or memory_revision or file_states:
                 authorized_tokens = self.settings.llm_context_window
                 if not balance.unlimited:
                     authorized_tokens = min(authorized_tokens, balance.remaining_tokens or 0)
@@ -322,15 +425,23 @@ class AdmissionMixin:
                 idempotency_key=idempotency_key,
                 request_hash=fingerprint,
                 request_messages=[message.model_dump() for message in context],
-                options=effective_options.model_dump(),
+                thinking=effective_options.thinking,
                 prompt_tokens=prompt_tokens,
                 context_compaction_needed=compaction_needed,
+                memory_dependencies=dependencies,
                 network_mode=resolved_mode,
                 network_revision=preference.revision,
                 web_search_mode=web_search,
                 max_output_tokens=effective_options.max_tokens,
                 last_event_sequence=0,
+                progress=initial_progress(),
             )
+            if question_run is not None:
+                question_run.question_card = {
+                    **question_run.question_card,
+                    "answers": question_answers,
+                    "response_generation_id": str(run_id),
+                }
             session.add(run)
             await session.flush()
             add_event(
@@ -341,6 +452,7 @@ class AdmissionMixin:
                     "user_message_id": str(user_message.id),
                     "assistant_message_id": str(assistant.id),
                     "status": "queued",
+                    "progress": run.progress,
                     "context": context_measurement(
                         run, self.settings, through=through, phase="preparing"
                     ),

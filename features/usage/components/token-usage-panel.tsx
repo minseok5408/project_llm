@@ -13,6 +13,7 @@ export function TokenUsagePanel({
   collapsed = false,
   generalSettings,
   networkSettings,
+  memorySettings,
   logoutPending,
   onRefresh,
   onLogout,
@@ -24,6 +25,7 @@ export function TokenUsagePanel({
   collapsed?: boolean;
   generalSettings?: ReactNode;
   networkSettings?: ReactNode;
+  memorySettings?: ReactNode;
   logoutPending: boolean;
   onRefresh: () => void;
   onLogout: () => void;
@@ -155,6 +157,7 @@ export function TokenUsagePanel({
         usage={usage}
         generalSettings={generalSettings}
         networkSettings={networkSettings}
+        memorySettings={memorySettings}
         onRefresh={onRefresh}
       />
     </section>

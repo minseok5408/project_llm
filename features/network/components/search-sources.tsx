@@ -8,9 +8,9 @@ export function searchNotice(search: SearchMetadata): string | null {
     return '웹에서 참고 자료를 찾고 있습니다…';
   if (search.status === 'completed') return null;
   if (search.status === 'disabled' && search.reason === 'mode_changed')
-    return '로컬 전용 설정이 변경되어 웹검색을 중단했습니다. 최신 정보는 확인하지 못했습니다.';
+    return '데이터 사용 설정이 변경되어 웹검색을 중단했습니다. 최신 정보는 확인하지 못했습니다.';
   if (search.status === 'disabled' && search.reason === 'forced_local')
-    return '로컬 전용 모드로 웹검색을 사용하지 않았습니다. 최신 정보는 확인하지 못했습니다.';
+    return '이번 답변은 로컬 모드로 처리해 웹검색을 사용하지 않았습니다. 최신 정보는 확인하지 못했습니다.';
   if (search.status === 'disabled' && search.reason === 'search_off')
     return '웹검색을 끄고 로컬 지식으로 답합니다. 최신 정보는 확인하지 못했습니다.';
   if (search.reason === 'provider_unconfigured')

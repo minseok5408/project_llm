@@ -18,7 +18,7 @@ npm install
 
 ## 환경 설정 파일 생성 (선택)
 
-`.env`가 없는 경우에만 복사합니다. 기존 파일이 있으면 필요한 설정을 직접 추가합니다.
+`.env`가 없는 경우에만 복사합니다. `.env.example`에 항목을 추가할 때는 로컬 `.env`에도 누락 항목을 함께 반영하며, 기존 설정값·비밀값은 덮어쓰지 않습니다.
 
 ```bash
 cp -n .env.example .env
@@ -47,13 +47,13 @@ cp -n .env.example .env
 
 기본 DB 이름은 `project_llm`, 로그인 사용자는 `system`, 주소는 `127.0.0.1:5432`입니다. `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PORT`를 바꾸면 `DATABASE_URL`에도 같은 값을 반영합니다. `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`는 빈 데이터 디렉터리의 최초 초기화에 쓰이므로 기존 volume의 DB 이름·사용자·비밀번호는 `.env` 수정만으로 바뀌지 않습니다. 기존 DB 이름이나 로그인 사용자를 바꿀 때는 PostgreSQL에서 실제 이름을 변경한 뒤 환경 설정과 연결 URL을 맞춥니다.
 
-API는 migration을 자동 적용하지 않습니다. Docker 시작과 Alembic 실행은 위 명령으로 처리합니다. `DATABASE_ENABLED=true`이면 API와 독립 worker가 각자의 pool을 준비합니다. 현재 head는 `0012_network_search`입니다. 도메인·관측 테이블은 16개이며 기존 월 무료·플랜 예산을 유지하고 `token_reservations.usage_basis`에 정산 기준을 기록합니다. `conversation_compactions`는 대화 요약과 별도 시스템 유지 사용량을, `user_preferences`는 로컬 전용 설정을, `web_search_runs`는 생성별 검색 상태와 출처를 보관합니다. 로그인, 채팅 저장·복원, 무료 월 지급과 답변 종료 후 토큰 차감이 모두 이 DB를 사용합니다.
+API는 migration을 자동 적용하지 않습니다. Docker 시작과 Alembic 실행은 위 명령으로 처리합니다. `DATABASE_ENABLED=true`이면 API와 독립 worker가 각자의 pool을 준비합니다. 코드와 실제 개발 DB의 head는 `0017_schema_roles`이며 도메인·관측 테이블은 21개입니다. 백업 복원·migration 왕복과 보존 대상의 모든 행 해시 일치를 확인한 뒤 실제 DB에 적용했습니다. 최종 검사 상태는 [개발 현황](docs/development-status.md#최근-db-역할-정리)을 따릅니다. 기존 월 무료·플랜 예산을 유지하고 `token_reservations.usage_basis`에 정산 기준을 기록합니다. `conversation_compactions`는 대화 요약과 별도 시스템 유지 사용량을, `user_preferences`는 데이터 사용 정책을, `web_search_runs`는 생성별 검색 상태와 출처를 보관합니다. 로그인, 채팅 저장·복원, 무료 월 지급과 답변 종료 후 토큰 차감이 모두 이 DB를 사용합니다.
 
 ### DBeaver에서 테이블 확인
 
 PostgreSQL 연결의 표시 이름을 `docker_project_llm`으로 지정하고 Host `127.0.0.1`, Port `5432`, Database `project_llm`, Username `system`과 `.env`의 `POSTGRES_PASSWORD` 값을 입력합니다. 포트·DB·사용자 설정을 바꿨다면 해당 값을 사용합니다. 연결 후 `docker_project_llm → Schemas → public → Tables`를 새로고침합니다. 연결 표시 이름과 실제 DB 이름은 별도 설정입니다.
 
-`users`, `workspaces`, `workspace_members`, `conversations`, `messages`, `usage_plans`, `token_budgets`, `token_reservations`, `auth_identities`, `auth_sessions`, `generation_runs`, `generation_events`, `conversation_compactions`, `worker_heartbeats`, `user_preferences`, `web_search_runs`와 `alembic_version`이 보여야 합니다. migration 자체는 사용자별 예산을 일괄 생성하지 않습니다. 가입·사용량 조회·생성 요청 때 월 무료 플랜과 해당 회원의 월 예산을 자동 준비합니다. 시스템 계정 준비에만 아래 로컬 초기화 명령을 사용합니다. [월 무료 토큰 정책](docs/adr/0007-monthly-allowances.md)을 참고합니다.
+`users`, `workspaces`, `workspace_members`, `conversations`, `messages`, `usage_plans`, `token_budgets`, `token_reservations`, `auth_identities`, `auth_sessions`, `generation_runs`, `generation_events`, `conversation_compactions`, `worker_heartbeats`, `user_preferences`, `web_search_runs`, `generation_steps`, `user_memories`, `documents`, `document_versions`, `chunks`와 `alembic_version`이 보여야 합니다. migration 자체는 사용자별 예산을 일괄 생성하지 않습니다. 가입·사용량 조회·생성 요청 때 월 무료 플랜과 해당 회원의 월 예산을 자동 준비합니다. 시스템 계정 준비에만 아래 로컬 초기화 명령을 사용합니다. [월 무료 토큰 정책](docs/adr/0007-monthly-allowances.md)을 참고합니다.
 
 ### DB 설정
 
@@ -139,40 +139,81 @@ docker compose up -d --wait postgres
 
 ## 저장형 채팅과 생성 API
 
+### 채팅 화면 조작
+
+대화 행의 메뉴에서 제목 변경·고정·보관/복원·삭제를 선택합니다. 제목 입력과 삭제 확인은 그 행의 ID를 대상으로 처리하며 현재 열린 대화와 혼동하지 않습니다. 생성 중인 대화의 보관·삭제는 기존대로 제한합니다. 모바일 사이드바는 모달로 열리고 닫으면 시작점으로 초점을 돌려줍니다.
+
+600자 또는 8줄을 넘는 사용자 메시지는 더 보기/접기로 표시 높이만 조절하고 원문·복사는 유지합니다. 입력창 확대/축소는 입력 요소를 교체하지 않습니다. 답변 버전은 이전/다음 버튼과 번호로 탐색하며 저장된 현재 답변은 그대로 유지합니다.
+
+코드 블록은 기본 가로 스크롤과 코드 복사에 줄바꿈 토글·구문 색상을 제공합니다. 하이라이터는 외부 CDN 없이 로컬 청크를 필요할 때 읽습니다. 20,000자·500줄을 넘거나 언어가 없거나 지원하지 않으면 평문 전체를 표시하며 복사 내용은 색상·줄바꿈 설정과 관계없이 원문입니다. 상세 범위와 검사 결과는 [ADR 0021](docs/adr/0021-chat-ui-navigation.md)을 따릅니다.
+
 ### 화면과 테마 설정
 
 - 왼쪽 위 버튼으로 사이드바를 접고 펼칩니다. 접으면 세로 아이콘 막대가 남고, 좁은 화면에서는 대화 목록이 덮개 형태로 열립니다. **최근 채팅** 제목으로 최근 목록만 접거나 펼칩니다.
-- 사이드바 접기 버튼 옆 돋보기 또는 `⌘K`·`Ctrl+K`로 채팅 검색을 엽니다. 현재 작업 공간의 제목과 메시지 본문을 검색하며 보관된 대화도 포함합니다. 기본 작업 공간 선택은 화면에서 생략합니다.
-- 선택한 대화의 점 세 개 메뉴에서 제목 변경·고정·보관·삭제를 합니다. 왼쪽 아래 이름·요금제를 누르면 계정 메뉴가 열립니다. **설정**은 중앙 모달로 열리고, **사용량**을 선택해야 토큰 상세 사용량·갱신일이 표시됩니다. 계정 메뉴의 **로그아웃**은 현재 브라우저 세션만 종료합니다.
+- 사이드바 접기 버튼 옆 돋보기 또는 `⌘K`·`Ctrl+K`로 채팅 검색을 엽니다. 현재 작업 공간의 제목과 메시지 본문을 검색하며 보관된 대화도 포함합니다. 일치한 원문 발췌를 선택하면 해당 메시지와 답변 버전으로 이동합니다. 기본 작업 공간 선택은 화면에서 생략합니다.
+- 각 대화 행의 점 세 개 메뉴에서 제목 변경·고정·보관/복원·삭제를 합니다. 왼쪽 아래 이름·요금제를 누르면 계정 메뉴가 열립니다. **설정**은 중앙 모달로 열리고, **사용량**을 선택해야 토큰 상세 사용량·갱신일이 표시됩니다. 계정 메뉴의 **로그아웃**은 현재 브라우저 세션만 종료합니다.
 - 왼쪽 아래 계정 메뉴의 **설정 → 일반 → 화면 테마**는 **시스템 설정**이 기본이며 운영체제의 라이트·다크 변경을 즉시 따릅니다. 라이트 모드나 다크 모드를 직접 고르면 운영체제 변경과 관계없이 유지됩니다.
 - 테마는 현재 브라우저의 `project-llm-theme` 값으로 저장하고 같은 출처의 다른 탭에도 반영합니다. 브라우저 저장이 차단된 경우 현재 화면에는 적용되지만 재접속 시 유지되지 않을 수 있습니다. 계정별 DB 설정은 아니므로 다른 기기나 접속 주소에서는 기본 시스템 테마로 시작합니다.
-- 설정 모달의 **연결 및 검색**에서 로컬 전용·웹검색 방식을 바꿉니다. 화면 오른쪽 아래 **모델 정보**에서 모델 이름과 연결 상태를 확인합니다. 입력창 **생성 설정**에서 깊이 생각하기를 선택합니다. 최대 출력 토큰은 서버에서 관리하며 화면에는 숫자 선택을 제공하지 않습니다.
+- 설정 모달의 **연결 및 검색**에서 **데이터 사용 ON/OFF**를 선택합니다. ON은 필요할 때 웹검색 허용, OFF는 로컬 전용입니다. 화면 오른쪽 아래 **모델 정보**에서 모델 이름과 연결 상태를 확인합니다. 입력창 **생성 설정**에서 깊이 생각하기를 선택합니다. 최대 출력 토큰은 서버에서 관리하며 화면에는 숫자 선택을 제공하지 않습니다.
 - 입력창 오른쪽 화살표로 전송하고 생성 중에는 같은 자리의 사각형으로 **답변 중단**을 요청합니다. 참고 자료는 기본으로 접혀 있고 펼치면 제목 링크만 표시합니다.
 - 대화를 이동해도 각 대화의 입력 초안과 생성 연결을 유지합니다. 같은 대화에서 AI가 답변 중일 때도 다음 질문을 작성할 수 있으며 전송만 차단합니다. 이때 Enter는 줄바꿈으로 동작하고 중단 버튼은 계속 사용할 수 있습니다. 계정당 생성은 기존처럼 하나입니다.
 - 상단 로컬/온라인 표시 옆 작업 메뉴와 입력창 아래 문맥 드롭다운은 표시하지 않습니다. 전역 작업 상태와 문맥 측정 기록은 내부에서 유지하며, 계정 잔여 토큰은 **설정 → 사용량**에서 확인합니다.
 - 초안과 완료 알림은 현재 로그인 화면의 메모리에만 보관합니다. 새로고침·로그아웃 때 초기화되며, 서버의 진행 작업과 대화·문맥 기록은 다시 복원합니다. 새 측정 기록이 없는 과거 답변의 문맥 수치는 추정하지 않습니다.
 
+### 질문 카드
+
+필수 정보가 부족하면 AI가 질문 카드를 표시할 수 있습니다. 선택지를 누르거나 직접 입력하고 **답변 보내고 계속하기**를 누르면 새 답변을 생성합니다. 질문은 최대 3개이며 질문마다 답해야 합니다. 일반 채팅 입력으로 대화를 계속해도 됩니다. 응답한 카드나 이후 메시지가 생긴 카드는 다시 전송할 수 없습니다. 카드·응답·실행 상태는 새로고침 후 복원되며 보내지 않은 입력은 현재 계정 세션 메모리에만 보관됩니다.
+
+채팅 본문에 **진행 계획·처리 과정** 목록은 표시하지 않습니다. 실행 상태·사용량 기록과 재연결 복원은 내부에서 유지합니다. 질문을 기다리는 동안에는 생성 작업이 종료되어 모델을 점유하지 않습니다.
+
+`GENERATION_QUESTIONS_ENABLED`의 기본값은 `true`입니다. 질문 도구를 지원하지 않거나 도구 입력을 추가할 토큰 공간이 부족하면 일반 답변을 사용합니다. 질문 카드 생성과 이후 답변은 각각 확인된 모델 사용량을 종료 후 정산합니다. 별도 질문 판단 추론은 추가하지 않습니다.
+
+`POST /api/v1/generations/{id}/respond`에 `{ "answers": ["직접 입력한 답"], "options": { "thinking": false }, "network_mode": "local", "web_search": "off" }`를 보냅니다. 질문당 최대 2,000자, 본문 최대 40,000바이트이며 UUID `Idempotency-Key`와 기존 세션·CSRF·Origin 검사가 필요합니다. 메시지 조회는 `question_card`, `can_respond`, `progress`를 반환합니다. 카드 답변은 외부 검색 권한을 부여하지 않습니다. [ADR 0016](docs/adr/0016-question-cards-and-execution-progress.md)을 참고합니다.
+
+### 개인 기억과 압축 이전 원문
+
+**설정 → 기억**에서 기억 이름과 내용을 입력해 저장합니다. 기억은 계정별로 새 채팅에도 적용되며 항목별 수정·삭제를 지원합니다. 이름 80자·내용 500자·최대 20개이며, 대화를 읽고 자동 저장하지 않습니다. 채팅의 “기억해 줘” 요청은 이 설정으로 안내합니다. 다른 기기에서 바꾼 뒤 저장 충돌이 발생하면 새로고침 후 다시 확인합니다.
+
+기억을 변경하면 관련 진행 답변이 중단될 수 있습니다. 이전 기억을 사용한 답변·파생 요약은 이후 문맥에서 재사용하지 않으며 기존 채팅 원문은 보존합니다. 장기 기억과 원문 발췌는 검색 판단·외부 검색에 제공하지 않습니다. 사용자가 현재 질문이나 최근 발언에 직접 쓴 내용에는 기존 외부 검색 정책이 적용됩니다.
+
+과거 내용을 묻거나 코드 식별자가 있는 질문은 유효한 압축 범위 이전의 원문을 어휘 검색합니다. 기본 최대 3개·3,600자와 실제 문맥·잔여 토큰 상한을 검사하며 부족하면 참고 자료를 줄이거나 생략합니다. 의미가 비슷한 모든 표현을 찾는 검색은 아닙니다. 생성 응답의 `recall_sources`와 `meta.recall`에는 메시지 ID·순번·역할·상태·문자 범위가 남습니다.
+
+| 설정                         | 기본값 | 의미                                             |
+| ---------------------------- | ------ | ------------------------------------------------ |
+| `CONTEXT_RECALL_ENABLED`     | `true` | 현재 대화의 압축 이전 원문 회수                  |
+| `CONTEXT_RECALL_MAX_RESULTS` | `3`    | 최대 발췌 메시지 수, 1~5개                       |
+| `CONTEXT_RECALL_MAX_CHARS`   | `3600` | 발췌 전체 문자 수, 600~6000자                    |
+| `MEMORY_CONTEXT_MAX_CHARS`   | `4000` | 최종 입력에 넣을 저장된 기억 문자 수, 500~8000자 |
+
+기억 API는 `GET/POST /api/v1/memories`, `PATCH/DELETE /api/v1/memories/{id}`입니다. 목록은 `{revision, limit, items}`를 반환하며 POST/PATCH에는 `{revision, key, content}`, DELETE에는 `{revision}` JSON을 보냅니다. 쓰기에는 세션 쿠키·CSRF·동일 Origin이 필요합니다. 사용자 ID는 입력받지 않습니다. 저장·원문 검색 자체에는 LLM 토큰을 청구하지 않지만 실제 답변에 포함한 기억·발췌의 입력 토큰은 종료 후 정산합니다. 상세 내용은 [ADR 0015](docs/adr/0015-original-recall-and-personal-memory.md)를 따릅니다.
+
 ### 저장과 API
 
 로그인 후 기본 작업 공간의 대화를 왼쪽에서 선택합니다. 새 대화, 제목 변경, 고정·해제, 보관·복원과 삭제를 지원합니다. 첫 질문의 60자가 초기 제목이 됩니다. 목록은 최근 메시지 시각·UUID 커서, 메시지는 순번 커서로 더 불러옵니다. 고정 정렬은 현재 불러온 목록에만 적용하며 전체 페이지의 고정 우선 정렬은 아직 없습니다. 작업 공간이 없으면 빈 목록을 표시하고 조회 중 새 작업 공간을 만들지 않습니다.
 
-| 요청                                                                                   | 동작                                                                  |
-| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `GET /api/v1/workspaces`                                                               | 현재 계정의 작업 공간과 역할                                          |
-| `GET /api/v1/conversations?workspace_id=<uuid>&status=active&limit=30&cursor=<cursor>` | 대화 목록과 `next_cursor`; 보관 목록은 `status=archived`              |
-| `GET /api/v1/conversations?workspace_id=<uuid>&status=all&q=<query>`                   | 제목·본문 부분검색; 최대 200자, 빈 검색어는 전체 목록, 기존 커서 사용 |
-| `POST /api/v1/conversations`                                                           | `{workspace_id,title?}`로 생성, `201`                                 |
-| `GET /api/v1/conversations/{id}`                                                       | 단건 대화와 `active_generation_id`                                    |
-| `PATCH /api/v1/conversations/{id}`                                                     | `title`, `is_pinned`, `status` 중 변경할 값만 전송                    |
-| `DELETE /api/v1/conversations/{id}`                                                    | JSON `{}`로 soft delete, `204`                                        |
-| `GET /api/v1/conversations/{id}/messages?before=<sequence>&limit=50`                   | 시간순 메시지 한 페이지·`next_cursor`·`active_generation_id`·최근 요청의 `context` |
-| `GET /api/v1/usage`                                                                    | 자기 계정의 기간 한도·실사용·예약·잔여량; system은 `unlimited=true`   |
-| `POST /api/v1/conversations/{id}/messages`                                             | 새 사용자 메시지·생성 옵션·검색 모드 승인, `202`                      |
-| `GET /api/v1/generations/active`                                                       | 권한을 유지한 본인의 진행 작업; 목록 페이지·작업 공간 선택과 무관한 복원 |
-| `GET /api/v1/generations/{id}`                                                         | 생성 상태·확정된 입력/출력 사용량·요청별 `context`                     |
-| `GET /api/v1/generations/{id}/events?after=0`                                          | 저장한 이벤트 재생; `Last-Event-ID`도 지원                            |
-| `POST /api/v1/generations/{id}/cancel`                                                 | JSON `{}`로 본인이 시작한 생성 중단 요청                              |
-| `POST /api/v1/generations/{id}/regenerate`                                             | 마지막 질문의 현재 답변 재생성; 생성·검색 옵션과 멱등 키, `202`       |
+| 요청                                                                                   | 동작                                                                                                        |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/workspaces`                                                               | 현재 계정의 작업 공간과 역할                                                                                |
+| `GET /api/v1/conversations?workspace_id=<uuid>&status=active&limit=30&cursor=<cursor>` | 대화 목록과 `next_cursor`; 보관 목록은 `status=archived`                                                    |
+| `GET /api/v1/conversations?workspace_id=<uuid>&status=all&q=<query>`                   | 제목·본문 부분검색·`search_match`; 최대 200자, 빈 검색어는 기존 목록                                        |
+| `POST /api/v1/conversations`                                                           | `{workspace_id,title?}`로 생성, `201`                                                                       |
+| `GET /api/v1/conversations/{id}`                                                       | 단건 대화와 `active_generation_id`                                                                          |
+| `PATCH /api/v1/conversations/{id}`                                                     | `title`, `is_pinned`, `status` 중 변경할 값만 전송                                                          |
+| `DELETE /api/v1/conversations/{id}`                                                    | JSON `{}`로 soft delete, `204`                                                                              |
+| `GET /api/v1/conversations/{id}/messages?before=<sequence>&limit=50`                   | 시간순 메시지·`next_cursor`·`newer_cursor`·`active_generation_id`·`context`; `after` 또는 `around`로도 조회 |
+| `GET /api/v1/usage`                                                                    | 자기 계정의 기간 한도·실사용·예약·잔여량; system은 `unlimited=true`                                         |
+| `POST /api/v1/conversations/{id}/messages`                                             | 새 사용자 메시지·생성 옵션·검색 모드 승인, `202`                                                            |
+| `GET /api/v1/generations/active`                                                       | 권한을 유지한 본인의 진행 작업; 목록 페이지·작업 공간 선택과 무관한 복원                                    |
+| `GET /api/v1/generations/{id}`                                                         | 생성 상태·확정된 입력/출력 사용량·요청별 `context`                                                          |
+| `GET /api/v1/generations/{id}/events?after=0`                                          | 저장한 이벤트 재생; `Last-Event-ID`도 지원                                                                  |
+| `POST /api/v1/generations/{id}/cancel`                                                 | JSON `{}`로 본인이 시작한 생성 중단 요청                                                                    |
+| `POST /api/v1/generations/{id}/regenerate`                                             | 마지막 질문의 현재 답변 재생성; 생성·검색 옵션과 멱등 키, `202`                                             |
+
+`GET /api/v1/conversations`의 비어 있지 않은 `q`는 앞뒤 공백을 제외한 최대 200자이며 `%`·`_`도 리터럴로 검색합니다. 검색 결과마다 `search_match`를 추가합니다. 본문이 일치하면 `{message_id, sequence, role, snippet}`이며 해당 대화의 가장 최근 일치 메시지를 가리킵니다. 발췌는 일치 위치 주변 원문 최대 280자에 양끝 생략 기호를 포함해 최대 282자입니다. 제목만 일치하면 null이고 빈 `q` 또는 생략한 요청은 기존 목록 형식을 유지합니다. 발췌는 HTML이 아닌 원문 문자열이며 화면에서 안전하게 강조합니다. 다른 작업 공간·계정·삭제된 대화는 기존 권한 규칙으로 제외합니다.
+
+메시지 조회는 `before=<sequence>`에 더해 `after=<sequence>` 또는 `around=<message UUID>`를 받습니다. 세 방향 중 둘 이상 지정하면 `422`입니다. `limit`은 기본 50, 허용 범위 1~100이며 `around`는 표적을 포함한 주변 메시지를 이 개수 이내로 반환합니다. 시작·끝에서는 더 적을 수 있습니다. 모든 `items`는 시간순이며 `next_cursor`는 더 오래된 페이지를 요청할 `before`, `newer_cursor`는 이후 페이지를 요청할 `after` 순번입니다. 각 방향에 더 없으면 null입니다. 방향을 생략하면 기존처럼 최신 페이지를 받습니다. 다른 대화·계정·삭제된 대화에 속하거나 존재하지 않는 표적은 `404`이며 전체 응답은 `no-store`입니다.
+
+화면의 검색 결과를 선택하면 `around`로 주변 최대 50개를 조회하고 표적 메시지·접힌 장문·이전 답변 버전을 펼쳐 이동합니다. 이후 앞뒤 페이지를 추가로 읽습니다. 생성 정보가 있는 assistant 메시지에는 `user_message_id`를 포함하며, 같은 질문의 인접한 답변을 이전/다음 버튼으로 고르는 데 사용합니다. 화면 선택이 저장된 현재 버전이나 다음 모델 문맥을 바꾸지는 않습니다.
 
 메시지 전송에는 UUID 형식의 `Idempotency-Key` 헤더와 아래 본문을 사용합니다. 같은 키·내용·생성 옵션·검색 모드를 재전송하면 기존 작업을 반환하며 다시 실행하거나 차감하지 않습니다. 같은 키의 다른 요청은 `409`입니다. 기존 `/api/chat`은 `410`을 반환합니다.
 
@@ -185,7 +226,7 @@ docker compose up -d --wait postgres
 }
 ```
 
-재생성도 UUID `Idempotency-Key`가 필요하며 본문은 `{ "options": { "thinking": false }, "network_mode": "auto", "web_search": "auto" }`입니다. 질문은 서버 원문을 사용하고 검색은 현재 선택한 설정으로 새로 수행합니다. `network_mode`는 `auto/local`, `web_search`는 `auto/on/off`를 받으며 생성 옵션과 별도의 최상위 필드입니다. 서버의 사용자별 로컬 전용 설정이 항상 우선합니다. 메시지 조회의 assistant 항목에는 `generation_id`, `generation_status`, `is_current`, `can_regenerate`, `finish_reason`, `search`가 포함됩니다. 이전 답변 버전과 검색 출처는 보존하고 현재 버전만 다음 모델 문맥에 넣습니다.
+재생성도 UUID `Idempotency-Key`가 필요하며 본문은 `{ "options": { "thinking": false }, "network_mode": "auto", "web_search": "auto" }`입니다. 질문은 서버 원문을 사용하고 검색은 현재 선택한 설정으로 새로 수행합니다. `network_mode`는 `auto/local`, `web_search`는 `auto/on/off`를 받으며 생성 옵션과 별도의 최상위 필드입니다. 서버의 사용자별 로컬 전용 설정이 항상 우선합니다. 메시지 조회의 assistant 항목에는 `generation_id`, `user_message_id`, `generation_status`, `is_current`, `can_regenerate`, `finish_reason`, `search`, `progress`, `question_card`, `can_respond`가 포함됩니다. 이전 답변 버전과 검색 출처는 보존하고 현재 버전만 다음 모델 문맥에 넣습니다.
 
 작성자 또는 작업 공간 owner/admin만 대화 정보를 변경·삭제할 수 있습니다. 다른 작업 공간의 ID는 `404`이며 시스템 계정도 같은 소속 검사를 거칩니다. 생성 중인 대화의 보관·삭제는 `409`로 거부합니다. 서버는 클라이언트의 전체 이력·역할·사용량을 받지 않고, 서버 system prompt·저장된 요약·최근 질문과 답변·현재 질문으로 모델 입력을 만듭니다. 완료·중단·실패·기존 사용량 미확정 작업의 사용자 발언과 실제 부분 답변을 포함하며 빈 답변이나 오류 안내를 모델의 답변으로 만들지 않습니다.
 
@@ -231,12 +272,12 @@ Markdown·표·코드 블록과 답변/코드 복사를 지원합니다. 일반 
 
 ## 온라인과 로컬 전용 모드
 
-로컬 전용 스위치는 기본 OFF이며 설정은 로그인한 사용자별로 DB에 저장합니다. OFF 상태에서 검색 서비스를 사용할 수 있으면 온라인, 연결할 수 없거나 키가 없으면 로컬 모드로 표시합니다. ON으로 바꾸면 서버 연결 검사와 외부 검색을 중단하고 로컬 모델만 사용합니다. 물리적인 Wi-Fi 상태를 판별하는 기능이 아니라 서버에서 검색 서비스에 도달할 수 있는지 확인하는 기능입니다. 다른 기기와 이 Mac 사이의 Wi-Fi/LAN 접속 설정은 그대로 유지합니다.
+데이터 사용 스위치는 기본 ON이며 설정은 로그인한 사용자별로 DB에 저장합니다. ON 상태에서 검색 서비스를 사용할 수 있으면 온라인, 연결할 수 없거나 키가 없으면 로컬 모드로 표시합니다. OFF로 바꾸면 서버 연결 검사와 외부 검색을 중단하고 로컬 모델만 사용합니다. 물리적인 Wi-Fi 상태를 판별하는 기능이 아니라 서버에서 검색 서비스에 도달할 수 있는지 확인하는 기능입니다. 다른 기기와 이 Mac 사이의 Wi-Fi/LAN 접속 설정은 그대로 유지합니다.
 
 1. 로컬 `.env`의 `WEB_SEARCH_PROVIDER=tavily`를 확인하고 발급받은 Tavily API 키를 `WEB_SEARCH_API_KEY`에 입력합니다. 기존 `.env`를 예시 파일로 덮어쓰지 않습니다.
 2. 스키마 변경을 적용하려면 `.venv/bin/python -m alembic upgrade head`를 실행합니다.
 3. 기존 개발 실행을 `Ctrl+C`로 종료하고 `.venv/bin/python scripts/dev.py`를 다시 실행합니다. 독립 worker는 API reload만으로 환경 변수를 다시 읽지 않습니다.
-4. 로그인 후 **왼쪽 아래 계정 → 설정 → 연결 및 검색**에서 로컬 전용을 OFF로 두고 연결 상태를 확인합니다. 다시 확인 버튼으로 서버 연결 검사를 요청할 수 있습니다.
+4. 로그인 후 **왼쪽 아래 계정 → 설정 → 연결 및 검색**에서 데이터 사용을 ON으로 두고 연결 상태를 확인합니다. 다시 확인 버튼으로 서버 연결 검사를 요청할 수 있습니다.
 
 | 환경 변수                          | 기본값   | 의미                                                     |
 | ---------------------------------- | -------- | -------------------------------------------------------- |
@@ -244,10 +285,19 @@ Markdown·표·코드 블록과 답변/코드 복사를 지원합니다. 일반 
 | `WEB_SEARCH_API_KEY`               | 미설정   | 선택한 공급자의 API 키, 기본 Tavily; 서버에서만 보관     |
 | `WEB_SEARCH_TIMEOUT_SECONDS`       | `8`      | 검색 요청 제한 시간(초)                                  |
 | `WEB_SEARCH_MAX_RESULTS`           | `5`      | 최대 검색 결과 수                                        |
-| `WEB_SEARCH_MAX_QUERY_CHARS`       | `500`    | 외부에 보낼 현재 질문의 최대 글자 수                     |
+| `WEB_SEARCH_MAX_QUERY_CHARS`       | `500`    | 외부에 보낼 검색어의 최대 글자 수                        |
 | `WEB_SEARCH_MAX_CONTEXT_CHARS`     | `12000`  | 모델에 넣을 검색 자료의 글자 수 상한                     |
 | `WEB_SEARCH_CHECK_CACHE_SECONDS`   | `30`     | 검색 서비스 연결 확인 결과의 캐시 시간(초)               |
 | `WEB_SEARCH_CHECK_TIMEOUT_SECONDS` | `2`      | 연결 확인 요청 제한 시간(초)                             |
+| `WEB_SEARCH_AGENT_ENABLED`         | `true`   | 검증된 MLX의 도구 호출로 문맥 검색·제한 재검색 사용      |
+| `WEB_SEARCH_MAX_ATTEMPTS`          | `2`      | 질문 하나의 최대 검색 횟수(1~3)                          |
+| `WEB_SEARCH_AGENT_TIMEOUT_SECONDS` | `90`     | 검색 판단·검색·재검색을 합한 준비 제한 시간(초)          |
+| `WEB_SEARCH_PLANNING_MAX_TOKENS`   | `256`    | 검색 판단 호출 한 번의 최대 출력 토큰                    |
+| `GENERATION_MAX_STEPS`             | `8`      | 검색 판단·검색·최종 답변을 합한 최대 실행 단계           |
+
+문맥 검색에는 기본 Qwen3.8-27B와 MLX-VLM 0.6.17을 검증했습니다. 다른 모델·서버를 사용하면 `WEB_SEARCH_AGENT_ENABLED=false`로 두고, 이미 실행 중인 모델에 `.venv/bin/python scripts/evaluate_search_tools.py`로 도구 호출·사용량·중단을 확인한 뒤 켭니다. false 또는 도구 호출 미지원 공급자는 현재 질문의 앞부분을 한 번 검색합니다. 이 검사는 합성 자료만 쓰며 외부 검색이나 새 서버 실행은 하지 않습니다.
+
+새 코드를 실행하기 전에 `.venv/bin/python -m alembic upgrade head`로 `0014_memory_recall`까지 적용하고 API·독립 worker를 재시작해야 합니다. 기존 `.env`와 저장된 대화는 유지합니다. 구현·상한·정산은 [ADR 0014](docs/adr/0014-bounded-context-search-and-step-usage.md)를 따릅니다.
 
 키가 없어도 로그인·저장·로컬 답변은 사용할 수 있습니다. 키는 브라우저 설정에 입력하지 않고 `.env`에만 보관합니다. 검색 API 요금·호출 한도는 발급받은 공급자 계정의 조건을 따르며 서비스 토큰 예산과 별개입니다.
 
@@ -257,13 +307,15 @@ Tavily 요청은 `search_depth=basic`, `auto_parameters=false`로 고정해 상�
 
 Brave 어댑터도 선택 옵션으로 유지합니다. `WEB_SEARCH_PROVIDER=brave`를 사용하려면 `WEB_SEARCH_API_KEY`에 Brave 키를 넣어야 하며, 이 앱은 출처를 DB에 저장하므로 Brave의 [결과 저장 안내](https://brave.com/search/api/)에 따른 저장 권한 계약이 필요합니다. 기본 Tavily 설정에는 이 Brave 전용 조건을 적용하지 않습니다.
 
-웹검색 방식의 기본값은 `자동`입니다. 최신 정보나 명시적인 웹검색 요청에 해당하는 질문만 검색하며, `항상 검색`은 모든 질문에 검색을 시도하고 `검색 안 함`은 해당 답변에 검색을 사용하지 않습니다. 검색 방식은 현재 로그인한 화면의 메모리에 유지하고 생성 작업마다 기록합니다. 설정 미확인·저장 중·API 오류 때 보내는 질문은 로컬 전용으로 제한합니다. 로컬 전용 ON은 웹검색 방식보다 우선합니다. 연결 실패로 자동 로컬 전환해도 사용자의 OFF 선택을 ON으로 바꾸지 않아 다음 질문에서 재연결을 시도할 수 있습니다.
+화면에는 **데이터 사용 ON/OFF**만 제공하며 사용자별로 저장합니다. ON은 `network_mode=auto`, `web_search=auto`로 필요한 질문에 웹검색을 허용하고, OFF는 `network_mode=local`, `web_search=off`로 외부 연결 확인과 검색을 차단합니다. 내부 저장값은 기존 `local_only`를 유지하므로 ON은 `false`, OFF는 `true`에 대응합니다. 설정 미확인·확인 중·저장 중·API 오류 때 보내는 질문은 `local/off`로 제한합니다. ON 상태에서 검색 대상·예산이 없거나 연결이 실패하면 로컬로 답하며, 저장된 ON 선택은 유지해 다음 질문에서 재연결을 시도할 수 있습니다. 내부 API의 `web_search=on` 호환은 유지하지만 화면에서는 별도 검색 방식을 선택하지 않습니다.
 
-검색에는 현재 질문의 앞부분 기본 최대 500자만 전송합니다. 이전 대화, 문맥 요약, 전체 모델 입력, 사용자 쿠키와 로그인 세션은 전송하지 않습니다. Tavily 응답의 제목·요약·링크를 참고하며 원문 페이지 본문을 직접 가져오거나 JavaScript를 실행하지 않습니다. 외부 검색 자료는 비신뢰 참고 자료로 전달하고 실제 입력 토큰을 다시 계산한 뒤 답변을 생성합니다. 문맥·남은 예산에 맞춰 자료 수와 출력 상한을 줄이며, 자료를 포함하지 못하면 그 사실을 안내하고 로컬 답변으로 진행합니다.
+질문별 자동 검색은 기존 키워드 규칙을 사용합니다. 검색 키워드가 없는 인사·기초 개념·단순 번역·계산은 검색 준비와 외부 검색을 생략하고, 명시 검색·최신 뉴스·날씨·환율 등은 검색 대상으로 고릅니다. “오늘 날씨가 좋다를 영어로 번역해 줘”처럼 번역문에 최신 정보 단어가 포함되면 잘못 분류할 수 있으며 모든 질문의 의미를 판별하는 기능은 아닙니다. 설정 조회·수동 재확인의 연결 검사는 별도로 유지합니다. 이번 보정의 검사 결과는 [개발 현황](docs/development-status.md#최근-검색-조건-보정)을 따릅니다.
 
-화면은 `검색 중`과 모델 `생성 중`을 구분하고, 답변 아래에 출처 번호·제목 링크·조회 시각을 표시합니다. 검색 실패·오프라인·빈 결과에서는 질문을 보존하고 최신 정보를 확인하지 못했다는 안내와 함께 로컬 답변을 생성합니다. 검색 도중 답변 중단을 누르면 기존 중단 동작으로 전체 생성을 종료합니다. 로컬 전용 설정의 revision이 바뀌면 대기 중이거나 진행 중인 검색은 외부 요청을 중단하고 로컬 답변으로 전환합니다. 이미 완료된 답변의 출처를 삭제하거나 모델 생성을 일시정지하지 않습니다.
+기본 문맥 검색은 현재 질문과 최근 사용자 발언 4개에서 필요한 원문 표현만 골라 최대 500자의 검색어를 만듭니다. 과거 발언은 개인 정보·내부 메모로 감지되는 내용을 제외하고 선택한 표현의 합계를 80자로 제한합니다. 대화 전체, 압축 요약, 모델 입력, 사용자 쿠키와 로그인 세션은 전송하지 않습니다. 문맥 검색을 끄거나 도구 호출을 지원하지 않는 공급자는 기존처럼 현재 질문 앞부분만 사용합니다. Tavily 응답의 제목·요약·링크를 참고하며 원문 페이지 본문을 직접 가져오거나 JavaScript를 실행하지 않습니다. 외부 검색 자료는 비신뢰 참고 자료로 전달하고 실제 입력 토큰을 다시 계산한 뒤 답변을 생성합니다. 문맥·남은 예산에 맞춰 자료 수와 출력 상한을 줄이며, 자료를 포함하지 못하면 그 사실을 안내하고 로컬 답변으로 진행합니다.
 
-검색 자료가 실제 답변 입력에 포함되면 그 토큰도 사용자 입력 사용량에 포함하며, 출력과 함께 완료·중단 후 기존 정책으로 한 번 정산합니다. 생성 전에 토큰을 차감하지 않으며 자동 요약 토큰의 사용자 비차감 정책도 유지합니다.
+화면은 `검색 중`과 모델 `생성 중`을 구분합니다. 답변 아래 참고 자료를 펼치면 제목 링크를 표시하고 출처 번호·조회 시각은 DB/API에 보존합니다. 검색 실패·오프라인·빈 결과에서는 질문을 보존하고 최신 정보를 확인하지 못했다는 안내와 함께 로컬 답변을 생성합니다. 검색 도중 답변 중단을 누르면 기존 중단 동작으로 전체 생성을 종료합니다. 로컬 전용 설정의 revision이 바뀌면 대기 중이거나 진행 중인 검색은 외부 요청을 중단하고 로컬 답변으로 전환합니다. 이미 완료된 답변의 출처를 삭제하거나 모델 생성을 일시정지하지 않습니다.
+
+검색 판단·재검색 판단의 실제 모델 입력·출력과 최종 답변의 실제 입력·출력을 합산해 완료·중단 후 한 번 정산합니다. 검색 API의 호출 횟수는 별도 도구 실행으로 기록하며 API 비용을 LLM 토큰으로 환산하지 않습니다. 생성 전에 토큰을 차감하지 않으며 자동 요약 토큰의 사용자 비차감 정책도 유지합니다.
 
 | 요청                              | 본문·응답                                                                                     |
 | --------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -407,6 +459,14 @@ readiness는 의존 서비스 연결 상태만 확인하므로 migration 최신 
 
 로그인 도입 후에는 `DATABASE_ENABLED=false`로 바꾸면 로그인·채팅이 중단됩니다. 익명 채팅으로 자동 전환하지 않습니다. 앱을 중단해도 PostgreSQL 테이블과 volume은 보존합니다.
 
+`0017_schema_roles`는 중복 첨부 연결과 미사용 대화 설정·메시지 프롬프트 버전을 제거하고, 문서당 단일 처리 버전·생성 옵션 필드·대화/사용자 범위 외래 키를 적용합니다. 업그레이드는 진행 생성, 비어 있지 않은 `conversations.settings`, NULL이 아닌 `messages.prompt_version`, 알 수 없는 생성 옵션·서로 다른 출력 상한, 문서 활성 여부와 첨부 범위 불일치, 여러 문서 버전, 확장자로 복원할 수 없는 MIME 이력이 있으면 거부합니다. 데이터 의미를 추정해 지우지 않으며 새 외래 키와 맞지 않는 행도 제약 적용 단계에서 거부합니다.
+
+이 revision의 다운그레이드도 진행 생성이 있으면 거부합니다. `thinking`과 `max_output_tokens`로 옵션 JSON을, 활성 `documents`로 첨부 연결을 재구성하고 대화 설정 `{}`·메시지 프롬프트 버전 NULL·확장자별 MIME을 복원합니다. 재구성된 연결 행의 ID는 새로 발급하며 문서 ID·원본·검색 조각은 보존합니다. 과거의 빈 필드와 중복 연결을 복원하는 절차이며, 알려지지 않은 값을 버리는 업그레이드는 허용하지 않습니다. 세부 역할과 보존 조건은 [ADR 0020](docs/adr/0020-schema-roles.md)을 따릅니다.
+
+`0014_memory_recall`은 개인 기억 변경 이력 또는 원문 회수 기록이 있으면 다운그레이드를 거절합니다. 기억을 모두 삭제했더라도 옛 답변·요약의 세대 검사를 제거하면 삭제된 기억이 다시 사용될 수 있으므로 자동 롤백하지 않습니다. 데이터가 없는 격리 DB에서는 기억 테이블과 새 메타데이터 필드를 제거할 수 있습니다.
+
+`0013_generation_steps`는 모델·도구 실행 기록이 있으면 다운그레이드를 거절합니다. 실행 기록이 없는 임시 DB에서는 `generation_steps`만 제거합니다.
+
 `0012_network_search`는 검색 기록이 있으면 다운그레이드를 거절합니다. 이전 스키마로 되돌리며 이미 제공한 답변의 출처를 삭제하지 않습니다. 기록이 없는 임시 DB에서는 검색 테이블·사용자 모드 설정·요청별 모드 필드를 제거합니다.
 
 `0011_answer_versions`는 재생성 이력이 있으면 다운그레이드를 거절합니다. 이전 스키마가 같은 질문의 여러 답변을 표현하지 못하므로 원문이나 정산 이력을 임의 삭제하지 않습니다. `0010_worker_heartbeat` 다운그레이드는 worker 관측 기록만 제거합니다.
@@ -421,7 +481,7 @@ readiness는 의존 서비스 연결 상태만 확인하므로 migration 최신 
 
 `0005_generation_runs`의 다운그레이드는 생성 작업·이벤트와 멱등 실행 이력을 삭제하지만 기존 메시지·토큰 예약은 남깁니다. 진행 작업과 미확정 예약을 자동 정산하지 않으므로 운영 DB의 단순 되돌리기 수단으로 사용하지 않습니다. `0004_auth_sessions`의 다운그레이드는 비밀번호 인증 수단과 로그인 세션을 삭제합니다. `0003_system_token_quotas`는 사용자 플랫폼 권한 열과 토큰 관리 테이블 3개를, `0002_core_chat_schema`는 사용자·작업 공간·소속·대화·메시지와 데이터를 삭제합니다. 마이그레이션 왕복 검사는 `.venv/bin/python scripts/test_db.py`의 임시 DB에서만 실행합니다. 실제 DB를 이전 구조로 되돌리기 전에는 worker를 정지하고 작업·예약 상태 확인, 백업과 복구 계획을 마련합니다.
 
-`0001_database_baseline` 자체의 다운그레이드는 revision 기록만 해제하지만, 현재 head에서 `downgrade base`를 실행하면 먼저 도메인·관측 16개 테이블을 삭제하게 됩니다. 다만 검색·재생성·무료 예산 등 보존 조건에 해당하는 데이터가 있으면 해당 revision에서 거부합니다. 이전 코드의 스키마 비교를 통과시키기 위해 테이블을 지우지 않습니다. 상세 범위는 [대화·생성의 롤백 절차](docs/adr/0006-persistent-chat-and-usage.md#검증과-롤백)를 따릅니다.
+`0001_database_baseline` 자체의 다운그레이드는 revision 기록만 해제하지만, 현재 head에서 `downgrade base`를 실행하면 현재 도메인·관측 21개 테이블과 되돌리기 중 재구성한 첨부 테이블까지 삭제하게 됩니다. 다만 검색·재생성·무료 예산 등 보존 조건에 해당하는 데이터가 있으면 해당 revision에서 거부합니다. 이전 코드의 스키마 비교를 통과시키기 위해 테이블을 지우지 않습니다. 상세 범위는 [대화·생성의 롤백 절차](docs/adr/0006-persistent-chat-and-usage.md#검증과-롤백)를 따릅니다.
 
 ## 코드 포맷
 
@@ -442,3 +502,43 @@ npm run start
 ```text
 Ctrl+C
 ```
+
+## 파일 첨부와 로컬 RAG (5차)
+
+PDF·TXT·Markdown·CSV·JSON을 입력창에서 첨부합니다. 새 대화에서도 파일을 먼저 올릴 수 있습니다. 파일은 해당 대화의 참여자에게 공유됩니다. 처리 중에는 질문을 작성할 수 있고 준비 완료 후 보낼 수 있습니다. 실패한 파일은 오류를 확인해 재시도하거나 삭제합니다. 답변의 파일 근거를 펼쳐 페이지·조각·문자 범위·원본을 확인합니다.
+
+```bash
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python scripts/setup_rag.py
+.venv/bin/python -m alembic upgrade head
+```
+
+기존 앱을 정상 종료한 뒤 다시 실행하면 독립 worker에 새 파일 처리가 적용됩니다. 별도 파일 서버는 필요하지 않습니다. 런타임은 모델을 자동 다운로드하지 않으므로 모델 설치 실패 시 준비 오류에서 설치 후 재시도합니다.
+
+| 설정                  | 기본값                         | 용도                                                      |
+| --------------------- | ------------------------------ | --------------------------------------------------------- |
+| `FILE_RAG_ENABLED`    | `true`                         | 파일 업로드·색인·검색 사용. 꺼도 목록·삭제 가능           |
+| `FILE_STORAGE_PATH`   | `data/documents`               | 영속 원본 경로                                            |
+| `FILE_EMBEDDING_PATH` | `models/multilingual-e5-small` | 고정 버전 로컬 임베딩 모델                                |
+| `FILE_CLAMAV_PATH`    | 미설정                         | 선택 clamscan 절대 경로. 지정하면 백신 검사를 필수로 수행 |
+
+파일당 10MiB·100페이지·추출 15만 자·256조각, 대화당 12개, 작업 공간당 100개·100MiB가 상한입니다. 첫 상한을 적용합니다. UTF-8 텍스트와 텍스트가 들어 있는 PDF만 지원하며 DOCX·ZIP·스캔 PDF OCR은 지원하지 않습니다. 최대 3회 처리 후 재시도 한도를 표시합니다. 기본 구조 검사/격리와 선택 백신의 차이, 백업·복구 절차는 [ADR 0017](docs/adr/0017-local-file-rag.md)을 확인합니다.
+
+메타데이터는 `documents`, `document_versions`, `chunks`에 저장합니다. `documents`가 대화별 활성 파일의 기준이고 문서당 처리 버전은 하나입니다. MIME은 업로드 시 검증하고 중복 저장하지 않으며 원본 해시·크기·확장자·처리 도구 이력과 검색 근거 위치는 유지합니다. 업로드는 `POST /api/v1/conversations/{id}/files`에 원본 본문·Content-Type·URL 인코딩한 `X-File-Name`·기존 CSRF를 보냅니다. 목록 GET, `/{documentId}` DELETE, `/{documentId}/retry` POST, `/{documentId}/download` GET, `/{documentId}/chunks/{chunkId}` GET을 제공합니다. 모든 경로는 세션과 대화 권한을 재검사하고 캐시하지 않습니다.
+
+```bash
+.venv/bin/python scripts/evaluate_file_rag.py
+.venv/bin/python scripts/test_db.py backend/tests/test_file_parsing.py backend/tests/test_file_rag.py backend/tests/test_file_api.py
+```
+
+## 답변 언어 정책
+
+현재 질문·입력 언어로 답하며 명시적인 번역·다른 언어 답변 요청을 해당 답변에 우선 적용합니다. 예를 들어 영어 원문을 한국어로 번역해 달라고 하면 한국어로 번역하고, 한국어 질문을 영어로 번역해 달라고 하면 요청한 영어 번역문을 반환합니다. 다음 질문은 다시 그 입력 언어를 따릅니다. 이전 답변·요약·참고 자료의 언어가 현재 질문의 답변 언어를 바꾸지 않도록 안내하며 인용·코드·고유명사는 보존합니다.
+
+정책은 서버에서 답변 문맥을 구성할 때 적용하며 모델 입력의 안내도 실제 입력 토큰에 포함합니다. 독립 worker에 변경을 반영하려면 앱을 정상 재시작합니다. 실제 모델 회귀 평가는 기존 모델 서버에서 다음 명령으로 수행하며 사용자 대화나 토큰 장부를 변경하지 않습니다.
+
+```bash
+.venv/bin/python scripts/evaluate_answer_language.py
+```
+
+결과는 `docs/evaluations/answer-language-smoke.json`에 기록합니다. 자세한 정책은 [ADR 0018](docs/adr/0018-answer-language-policy.md)을 참고하세요.

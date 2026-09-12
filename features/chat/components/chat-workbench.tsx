@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useRef, useState } from 'react';
 import {
   ArrowDown,
   BookOpen,
@@ -18,24 +11,33 @@ import {
   SquarePen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { AuthGate } from '../../auth/components/auth-gate';
 import type { AuthenticatedProps } from '../../auth/components/auth-gate';
-import { ChatStore } from '../state/chat-store';
-import { ChatScrollFollow, preserveScrollAnchor } from '../scroll/chat-scroll';
 import { ChatMessageView } from './chat-message-view';
+import { MessageVersionGroup } from './message-version-group.tsx';
+import { groupMessageVersions } from '../state/message-versions.ts';
+import {
+  ConversationManagementDialog,
+  type ConversationManagementTarget,
+} from './conversation-management-dialog.tsx';
 import { ChatComposer } from './chat-composer';
 import { taskLabel } from './generation-activity';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ModelInfoMenu } from './model-info-menu';
 import { ConversationSearchDialog } from './conversation-search-dialog';
 import { TokenUsagePanel } from '../../usage/components/token-usage-panel';
-import { NetworkModeStore } from '../../network/state/network-mode-store.ts';
 import { NetworkModeSwitch } from '../../network/components/network-mode-switch.tsx';
+import { MemorySettings } from '../../memory/components/memory-settings.tsx';
 import { ThemeSetting } from '../../preferences/components/theme-setting.tsx';
 
-const MODEL_ID = 'mlx-community/Qwen3.8-27B-4bit';
+import { useChatScroll } from '../hooks/use-chat-scroll.ts';
+import { useChatSession } from '../hooks/use-chat-session.ts';
+import { useModelStatus } from '../hooks/use-model-status.ts';
+import { useReducedMotion } from '../hooks/use-reduced-motion.ts';
+import { useWebMcp } from '../hooks/use-web-mcp.ts';
+import { useWorkbenchMenus } from '../hooks/use-workbench-menus.ts';
+
 const suggestions = [
   {
     label: '글 다듬기',
@@ -64,22 +66,6 @@ const suggestions = [
     color: 'text-violet-600 dark:text-violet-400',
   },
 ];
-const pathId = () =>
-  window.location.pathname.match(/^\/chat\/([0-9a-f-]{36})\/?$/i)?.[1] ?? null;
-type WebMcpContext = {
-  registerTool: (
-    tool: {
-      name: string;
-      title: string;
-      description: string;
-      inputSchema: Record<string, unknown>;
-      annotations: { readOnlyHint: boolean; untrustedContentHint: boolean };
-      execute: (input: unknown) => Promise<Record<string, unknown>>;
-    },
-    options?: { signal?: AbortSignal },
-  ) => void | Promise<void>;
-};
-
 export function ChatApplication() {
   return (
     <AuthGate>
@@ -104,58 +90,50 @@ function Workbench({
     session.user.display_name.trim() ||
     session.user.email.split('@')[0] ||
     '사용자';
-  const [networkStore] = useState(() => new NetworkModeStore(request));
-  const networkState = useSyncExternalStore(
-    networkStore.subscribe,
-    networkStore.getSnapshot,
-    networkStore.getServerSnapshot,
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    closeSidebar,
+    searchOpen,
+    setSearchOpen,
+    searchReturnFocus,
+    openSearch,
+  } = useWorkbenchMenus();
+  const { store, state, networkStore, networkState } = useChatSession(
+    request,
+    closeSidebar,
   );
-  const [store] = useState(
-    () =>
-      new ChatStore(
-        request,
-        (id) => {
-          const target = id ? `/chat/${id}` : '/';
-          if (window.location.pathname !== target)
-            window.history.pushState(window.history.state, '', target);
-        },
-        networkStore.generationPolicy,
-      ),
-  );
-  const state = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getServerSnapshot,
-  );
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchReturnFocus = useRef<HTMLElement | null>(null);
   const [thinking, setThinking] = useState(false);
-  const [titleDraft, setTitleDraft] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [runtime, setRuntime] = useState({
-    ready: false,
-    online: false,
-    backend: '확인 중',
-    model: MODEL_ID,
-    detail: '실행 상태 확인 중',
-  });
-  const scrollViewport = useRef<HTMLDivElement | null>(null);
-  const scrollContent = useRef<HTMLDivElement | null>(null);
-  const [scrollFollow] = useState(() => new ChatScrollFollow());
-  const [showLatest, setShowLatest] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const messageElements = useRef(new Map<string, HTMLElement>());
-  const scrollConversation = useRef<string | null>(null);
-  const touchY = useRef<number | null>(null);
-  const historyAnchor = useRef<{
+  const [managementTarget, setManagementTarget] =
+    useState<ConversationManagementTarget | null>(null);
+  const mobileSidebarTrigger = useRef<HTMLButtonElement | null>(null);
+  const searchNavigation = useRef(0);
+  const [findingMessage, setFindingMessage] = useState(false);
+  const [loadingNewer, setLoadingNewer] = useState(false);
+  const [reveal, setReveal] = useState<{
     conversationId: string;
     messageId: string;
-    offset: number;
+    key: number;
   } | null>(null);
-  const sendRef = useRef<(text: string) => Promise<boolean>>(async () => false);
+  const reducedMotion = useReducedMotion();
+  const runtime = useModelStatus(request);
+  const {
+    scrollViewport,
+    scrollContent,
+    viewportHandlers,
+    registerMessage,
+    showLatest,
+    loadingOlder,
+    followLatest,
+    pauseFollowing,
+    loadOlder,
+  } = useChatScroll({
+    conversationId: state.selected?.id ?? null,
+    messages: state.messages,
+    loadOlderMessages: store.olderMessages,
+    reveal,
+  });
   const generation = state.generation;
   const isGenerating = Boolean(generation);
   const otherTask = state.tasks.find(
@@ -170,7 +148,12 @@ function Workbench({
     (state.usage.remaining_tokens ?? 0) <= 0;
   const canSend =
     !state.loading &&
+    !findingMessage &&
     !state.sending &&
+    !state.fileBusy &&
+    !state.filesLoading &&
+    (!state.filesEnabled ||
+      state.files.every((file) => file.status === 'ready')) &&
     !isGenerating &&
     !otherTask &&
     !logoutPending &&
@@ -188,326 +171,76 @@ function Workbench({
     ? '연결 확인 중'
     : !networkOnline
       ? '로컬 모드'
-      : networkState.webSearch === 'auto'
-        ? '자동 검색'
-        : networkState.webSearch === 'on'
-          ? '웹검색 켜짐'
-          : '웹검색 꺼짐';
-
-  const openSearch = useCallback(() => {
-    searchReturnFocus.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    setSearchOpen(true);
-  }, []);
-
-  useEffect(() => {
-    const shortcut = (event: KeyboardEvent) => {
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === 'k' &&
-        !event.isComposing &&
-        !document.querySelector('[data-slot="dialog-content"][data-open]')
-      ) {
-        event.preventDefault();
-        openSearch();
-      }
-    };
-    window.addEventListener('keydown', shortcut);
-    return () => window.removeEventListener('keydown', shortcut);
-  }, [openSearch]);
-
-  useEffect(() => {
-    // 설정 메뉴만 외부 클릭과 키보드로 닫고 대화의 접힌 원문은 유지한다.
-    const openMenus = () =>
-      document.querySelectorAll<HTMLDetailsElement>(
-        'details[data-chat-menu][open]',
-      );
-    const closeOutside = (event: Event) => {
-      for (const menu of openMenus()) {
-        if (event.target instanceof Node && !menu.contains(event.target))
-          menu.open = false;
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      // 모달이 열린 동안에는 모달의 닫기와 초점 복귀가 Escape를 처리한다.
-      if (
-        event.key !== 'Escape' ||
-        event.defaultPrevented ||
-        document.querySelector('[data-slot="dialog-content"][data-open]')
-      )
-        return;
-      const menus = [...openMenus()];
-      if (menus.length) {
-        const focusedMenu = menus.find((menu) =>
-          menu.contains(document.activeElement),
-        );
-        for (const menu of menus) menu.open = false;
-        focusedMenu?.querySelector('summary')?.focus();
-      } else setSidebarOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('focusin', closeOutside);
-    window.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('focusin', closeOutside);
-      window.removeEventListener('keydown', closeOnEscape);
-    };
-  }, []);
-
-  useEffect(() => {
-    void networkStore.initialize();
-    return () => networkStore.dispose();
-  }, [networkStore]);
-
-  useEffect(() => {
-    networkStore.observeSearch(generation?.search);
-  }, [generation?.search, networkStore]);
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setReducedMotion(query.matches);
-    sync();
-    query.addEventListener('change', sync);
-    return () => query.removeEventListener('change', sync);
-  }, []);
-
-  useEffect(() => {
-    void store.initialize(pathId());
-    const navigateBack = () => {
-      const id = pathId();
-      if (id) void store.openConversation(id, false);
-      else store.newDraft();
-      setSidebarOpen(false);
-    };
-    const refresh = () => void store.refresh();
-    const visible = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    window.addEventListener('popstate', navigateBack);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', visible);
-    return () => {
-      window.removeEventListener('popstate', navigateBack);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', visible);
-      store.dispose();
-    };
-  }, [store]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const refresh = async () => {
-      try {
-        const response = await request('/api/status', {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('Status unavailable');
-        const data = (await response.json()) as {
-          provider?: {
-            ready?: boolean;
-            backend?: string;
-            model?: string;
-            detail?: string;
-          };
-        };
-        if (!controller.signal.aborted)
-          setRuntime({
-            ready: Boolean(data.provider?.ready),
-            online: true,
-            backend: data.provider?.backend?.toUpperCase() ?? '확인 중',
-            model: data.provider?.model ?? MODEL_ID,
-            detail: data.provider?.detail ?? '추론 서버 준비 중',
-          });
-      } catch {
-        if (!controller.signal.aborted)
-          setRuntime((previous) => ({
-            ...previous,
-            ready: false,
-            online: false,
-            detail: 'API 연결을 확인해 주세요.',
-          }));
-      }
-    };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 10_000);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [request]);
-  const updateScroll = useCallback(() => {
-    const viewport = scrollViewport.current;
-    if (!viewport) return;
-    const target = scrollFollow.targetAfterResize(viewport);
-    if (target !== null) {
-      viewport.scrollTop = target;
-      scrollFollow.recordPosition(viewport.scrollTop);
-    }
-    setShowLatest(scrollFollow.hasNewerContent(viewport));
-  }, [scrollFollow]);
-  const followLatest = () => {
-    scrollFollow.resume();
-    updateScroll();
-  };
-  const pauseFollowing = () => {
-    scrollFollow.pause();
-    updateScroll();
-  };
-
-  useLayoutEffect(() => {
-    const viewport = scrollViewport.current;
-    if (!viewport) return;
-    const conversationId = state.selected?.id ?? null;
-    if (
-      scrollConversation.current !== conversationId ||
-      state.messages.length === 0
-    ) {
-      scrollConversation.current = conversationId;
-      historyAnchor.current = null;
-      scrollFollow.resume();
-    }
-    const anchor = historyAnchor.current;
-    if (
-      anchor &&
-      anchor.conversationId === conversationId &&
-      state.messages[0]?.id !== anchor.messageId
-    ) {
-      const element = messageElements.current.get(anchor.messageId);
-      if (element) {
-        const offset =
-          element.getBoundingClientRect().top -
-          viewport.getBoundingClientRect().top;
-        viewport.scrollTop = preserveScrollAnchor(
-          viewport.scrollTop,
-          anchor.offset,
-          offset,
-        );
-        scrollFollow.recordPosition(viewport.scrollTop);
-      }
-      historyAnchor.current = null;
-    } else if (!loadingOlder) historyAnchor.current = null;
-    updateScroll();
-  }, [
-    state.messages,
-    state.selected?.id,
-    loadingOlder,
-    scrollFollow,
-    updateScroll,
-  ]);
-
-  useEffect(() => {
-    const viewport = scrollViewport.current;
-    const content = scrollContent.current;
-    if (!viewport || !content) return;
-    // 글자 단위 표시와 화면 크기 변화도 사용자가 선택한 따라가기 상태를 지킨다.
-    const observer = new ResizeObserver(updateScroll);
-    observer.observe(content);
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [updateScroll]);
-
-  const loadOlder = async () => {
-    if (loadingOlder || !state.selected) return;
-    const viewport = scrollViewport.current;
-    const firstId = state.messages[0]?.id;
-    if (!firstId) return;
-    const element = messageElements.current.get(firstId);
-    if (viewport && element) {
-      pauseFollowing();
-      historyAnchor.current = {
-        conversationId: state.selected.id,
-        messageId: firstId,
-        offset:
-          element.getBoundingClientRect().top -
-          viewport.getBoundingClientRect().top,
-      };
-    }
-    setLoadingOlder(true);
-    await store.olderMessages();
-    setLoadingOlder(false);
-  };
+      : '데이터 사용 ON';
 
   const send = async (text = state.draft) => {
     if (!canSend || !text.trim()) return false;
+    setReveal(null);
     followLatest();
     return store.send(text, { thinking });
   };
-  useEffect(() => {
-    sendRef.current = send;
-  });
-  useEffect(() => {
-    const context = (document as Document & { modelContext?: WebMcpContext })
-      .modelContext;
-    if (!context?.registerTool) return;
-    const lifecycle = new AbortController();
-    try {
-      const result = context.registerTool(
-        {
-          name: 'send_chat_message',
-          title: '채팅 메시지 보내기',
-          description:
-            '현재 로그인한 계정의 대화에 메시지를 저장하고 응답 생성을 요청합니다.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              message: { type: 'string', minLength: 1, maxLength: 100000 },
-            },
-            required: ['message'],
-            additionalProperties: false,
-          },
-          annotations: { readOnlyHint: false, untrustedContentHint: true },
-          async execute(input) {
-            const message =
-              typeof input === 'object' && input !== null && 'message' in input
-                ? (input as { message?: unknown }).message
-                : undefined;
-            if (
-              typeof message !== 'string' ||
-              !message.trim() ||
-              message.length > 100000
-            )
-              throw new Error('메시지는 1~100,000자로 입력해야 합니다.');
-            if (!(await sendRef.current(message)))
-              throw new Error(
-                '현재 메시지를 전송할 수 없습니다. 화면의 상태를 확인해 주세요.',
-              );
-            return { status: 'accepted' };
-          },
-        },
-        { signal: lifecycle.signal },
-      );
-      void Promise.resolve(result).catch(() => undefined);
-    } catch {
-      /* WebMCP 지원 여부와 관계없이 화면의 채팅은 계속 사용할 수 있다. */
-    }
-    return () => lifecycle.abort();
-  }, []);
-  const open = (id: string) => {
-    setTitleDraft(null);
-    setConfirmDelete(false);
+  useWebMcp(send);
+  const clearNavigation = () => {
+    ++searchNavigation.current;
+    setFindingMessage(false);
+    setReveal(null);
+    setManagementTarget(null);
     setSidebarOpen(false);
+  };
+  const open = (id: string) => {
+    clearNavigation();
     void store.openConversation(id);
   };
   const newChat = () => {
-    setTitleDraft(null);
-    setConfirmDelete(false);
-    setSidebarOpen(false);
+    clearNavigation();
     store.newDraft();
+  };
+  const openSearchResult = async (id: string, messageId?: string) => {
+    clearNavigation();
+    const key = searchNavigation.current;
+    if (!messageId) return store.openConversation(id);
+    setFindingMessage(true);
+    try {
+      await store.openConversation(id);
+      if (
+        key !== searchNavigation.current ||
+        store.getSnapshot().selected?.id !== id
+      )
+        return;
+      const found = await store.revealMessage(messageId);
+      if (
+        found &&
+        key === searchNavigation.current &&
+        store.getSnapshot().selected?.id === id
+      )
+        setReveal({ conversationId: id, messageId, key });
+    } finally {
+      if (key === searchNavigation.current) setFindingMessage(false);
+    }
+  };
+  const showLatestMessages = async () => {
+    setReveal(null);
+    const id = store.getSnapshot().selected?.id;
+    if (
+      store.getSnapshot().newerMessageCursor !== null &&
+      !(await store.latestMessages())
+    )
+      return;
+    if (id === store.getSnapshot().selected?.id) followLatest();
+  };
+  const showNewerMessages = async () => {
+    if (loadingNewer) return;
+    pauseFollowing();
+    setLoadingNewer(true);
+    try {
+      await store.newerMessages();
+    } finally {
+      setLoadingNewer(false);
+    }
   };
 
   return (
     <main className="chat-shell relative isolate flex h-[100dvh] w-full overflow-hidden bg-background">
-      {sidebarOpen && (
-        <button
-          type="button"
-          aria-label="대화 목록 닫기"
-          onClick={() => setSidebarOpen(false)}
-          className="absolute inset-0 z-20 bg-black/30 backdrop-blur-[2px] md:hidden"
-        />
-      )}
       <ConversationSidebar
         state={state}
         sidebarOpen={sidebarOpen}
@@ -517,26 +250,39 @@ function Workbench({
           setSidebarOpen(false);
           setDesktopCollapsed(true);
         }}
+        onMobileClose={() => setSidebarOpen(false)}
+        mobileReturnFocus={mobileSidebarTrigger}
         onNewChat={newChat}
-        onSearch={openSearch}
+        onSearch={() => {
+          setSidebarOpen(false);
+          openSearch();
+        }}
         onExpand={() => setDesktopCollapsed(false)}
         onFilterChange={(filter) => void store.setFilter(filter)}
         onOpenConversation={open}
         onRename={(conversation) => {
-          setTitleDraft(conversation.title);
-          setConfirmDelete(false);
+          store.clearError();
+          setManagementTarget({ conversation, kind: 'rename' });
           setSidebarOpen(false);
         }}
         onTogglePin={(conversation) =>
-          void store.updateConversation({ is_pinned: !conversation.is_pinned })
+          void store.updateConversation(
+            { is_pinned: !conversation.is_pinned },
+            conversation.id,
+          )
         }
         onToggleArchive={(conversation) =>
-          void store.updateConversation({
-            status: conversation.status === 'archived' ? 'active' : 'archived',
-          })
+          void store.updateConversation(
+            {
+              status:
+                conversation.status === 'archived' ? 'active' : 'archived',
+            },
+            conversation.id,
+          )
         }
-        onDelete={() => {
-          setConfirmDelete(true);
+        onDelete={(conversation) => {
+          store.clearError();
+          setManagementTarget({ conversation, kind: 'delete' });
           setSidebarOpen(false);
         }}
         onLoadMore={() => void store.loadConversations(true)}
@@ -551,16 +297,23 @@ function Workbench({
           onRefresh={() => void store.refreshUsage()}
           onLogout={() => void logout()}
           generalSettings={<ThemeSetting />}
+          memorySettings={<MemorySettings request={request} />}
           networkSettings={
             <NetworkModeSwitch
               state={networkState}
-              onLocalOnly={(value) => void networkStore.setLocalOnly(value)}
+              onDataUsage={(value) => void networkStore.setDataUsage(value)}
               onCheck={() => void networkStore.check()}
-              onWebSearch={networkStore.setWebSearch}
             />
           }
         />
       </ConversationSidebar>
+      <ConversationManagementDialog
+        target={managementTarget}
+        onClose={() => setManagementTarget(null)}
+        onRename={(id, title) => store.updateConversation({ title }, id)}
+        onDelete={(id) => store.deleteConversation(id)}
+        error={state.error}
+      />
       <ConversationSearchDialog
         key={state.workspaceId}
         open={searchOpen}
@@ -568,7 +321,9 @@ function Workbench({
         workspaceId={state.workspaceId}
         request={request}
         returnFocus={searchReturnFocus}
-        onOpenConversation={open}
+        onOpenConversation={(id, messageId) =>
+          void openSearchResult(id, messageId)
+        }
         onNewChat={newChat}
       />
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -578,6 +333,8 @@ function Workbench({
               variant="ghost"
               size="icon"
               className="size-10 rounded-xl md:hidden"
+              ref={mobileSidebarTrigger}
+              data-chat-sidebar-trigger
               aria-label="대화 목록 열기"
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen(true)}
@@ -661,64 +418,10 @@ function Workbench({
             </Button>
           </div>
         )}
-        {titleDraft !== null && (
-          <form
-            className="mx-3 mb-2 flex shrink-0 gap-2 rounded-2xl bg-muted p-3 sm:mx-5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void store
-                .updateConversation({ title: titleDraft.trim() })
-                .then((updated) => {
-                  if (updated) setTitleDraft(null);
-                });
-            }}
-          >
-            <Input
-              aria-label="대화 제목"
-              value={titleDraft}
-              maxLength={300}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              className="h-10 rounded-xl bg-background"
-              required
-            />
-            <Button
-              type="submit"
-              disabled={!titleDraft.trim()}
-              className="h-10 rounded-xl"
-            >
-              저장
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-10 rounded-xl"
-              onClick={() => setTitleDraft(null)}
-            >
-              취소
-            </Button>
-          </form>
-        )}
-        {confirmDelete && (
-          <div className="mx-3 mb-2 flex shrink-0 flex-wrap items-center gap-2 rounded-2xl bg-destructive/5 p-3 text-sm sm:mx-5">
-            <span className="flex-1">이 대화를 목록에서 삭제할까요?</span>
-            <Button
-              variant="outline"
-              className="rounded-xl text-destructive"
-              onClick={() => {
-                void store.deleteConversation();
-                setConfirmDelete(false);
-              }}
-            >
-              삭제
-            </Button>
-            <Button
-              variant="ghost"
-              className="rounded-xl"
-              onClick={() => setConfirmDelete(false)}
-            >
-              취소
-            </Button>
-          </div>
+        {findingMessage && (
+          <output className="px-5 py-2 text-sm text-muted-foreground">
+            검색한 메시지로 이동하는 중…
+          </output>
         )}
         <div
           className={cn(
@@ -744,45 +447,7 @@ function Workbench({
                 !welcome && 'h-full',
               )}
               style={{ overflowAnchor: 'none' }}
-              onScroll={(event) => {
-                const viewport = event.currentTarget;
-                scrollFollow.onScroll(viewport);
-                const anchor = historyAnchor.current;
-                const element = anchor
-                  ? messageElements.current.get(anchor.messageId)
-                  : null;
-                if (anchor && element)
-                  anchor.offset =
-                    element.getBoundingClientRect().top -
-                    viewport.getBoundingClientRect().top;
-                setShowLatest(scrollFollow.hasNewerContent(viewport));
-              }}
-              onWheel={(event) => {
-                if (event.deltaY < 0) pauseFollowing();
-              }}
-              onTouchStart={(event) => {
-                touchY.current = event.touches[0]?.clientY ?? null;
-              }}
-              onTouchMove={(event) => {
-                const currentY = event.touches[0]?.clientY;
-                if (
-                  currentY != null &&
-                  touchY.current != null &&
-                  currentY > touchY.current
-                )
-                  pauseFollowing();
-                touchY.current = currentY ?? null;
-              }}
-              onTouchEnd={() => {
-                touchY.current = null;
-              }}
-              onKeyDown={(event) => {
-                if (
-                  ['ArrowUp', 'PageUp', 'Home'].includes(event.key) ||
-                  (event.key === ' ' && event.shiftKey)
-                )
-                  pauseFollowing();
-              }}
+              {...viewportHandlers}
             >
               <div ref={scrollContent} className="mx-auto w-full max-w-3xl">
                 {state.loading ? (
@@ -831,56 +496,103 @@ function Workbench({
                         </Button>
                       </div>
                     )}
-                    {state.messages.map((message) => {
-                      const streaming =
-                        generation?.assistant_message_id === message.id;
-                      return (
-                        <article
-                          key={message.id}
-                          ref={(element) => {
-                            if (element)
-                              messageElements.current.set(message.id, element);
-                            else messageElements.current.delete(message.id);
-                          }}
-                          className="px-5 py-5 first:pt-8 last:pb-8 sm:px-6 sm:py-7"
+                    {groupMessageVersions(state.messages).map((group) => (
+                      <MessageVersionGroup
+                        key={group.id}
+                        group={group}
+                        activeMessageId={generation?.assistant_message_id}
+                        reveal={
+                          reveal?.conversationId === state.selected?.id
+                            ? reveal
+                            : null
+                        }
+                        registerMessage={registerMessage}
+                        onVersionChange={pauseFollowing}
+                      >
+                        {(message) => {
+                          const streaming =
+                            generation?.assistant_message_id === message.id;
+                          return (
+                            <ChatMessageView
+                              message={message}
+                              revealKey={
+                                reveal?.messageId === message.id
+                                  ? reveal.key
+                                  : undefined
+                              }
+                              request={request}
+                              fileSources={
+                                streaming ? generation?.file_sources : undefined
+                              }
+                              userName={userName}
+                              streaming={streaming}
+                              cancelling={Boolean(cancelling)}
+                              compacting={compacting}
+                              searching={searching}
+                              search={
+                                streaming ? generation?.search : undefined
+                              }
+                              questionAnswers={state.questionDrafts[message.id]}
+                              onQuestionAnswer={(index, value) =>
+                                store.setQuestionAnswer(
+                                  message.id,
+                                  index,
+                                  value,
+                                )
+                              }
+                              onQuestionSubmit={() => {
+                                if (!canSend) return;
+                                followLatest();
+                                void store.respondToQuestions(message.id, {
+                                  thinking,
+                                });
+                              }}
+                              reducedMotion={reducedMotion}
+                              lengthLimited={
+                                message.finish_reason === 'length' ||
+                                state.lengthLimitedMessageIds.includes(
+                                  message.id,
+                                )
+                              }
+                              canSend={canSend}
+                              onContinue={() => {
+                                if (!canSend) return;
+                                followLatest();
+                                void store.continueAnswer(message.id, {
+                                  thinking,
+                                });
+                              }}
+                              onRegenerate={() => {
+                                if (!canSend) return;
+                                followLatest();
+                                void store.regenerate(message.id, {
+                                  thinking,
+                                });
+                              }}
+                            />
+                          );
+                        }}
+                      </MessageVersionGroup>
+                    ))}
+                    {state.newerMessageCursor !== null && (
+                      <div className="p-4 text-center">
+                        <Button
+                          variant="ghost"
+                          className="rounded-full text-xs"
+                          disabled={loadingNewer}
+                          onClick={() => void showNewerMessages()}
                         >
-                          <ChatMessageView
-                            message={message}
-                            userName={userName}
-                            streaming={streaming}
-                            cancelling={Boolean(cancelling)}
-                            compacting={compacting}
-                            searching={searching}
-                            search={streaming ? generation?.search : undefined}
-                            reducedMotion={reducedMotion}
-                            lengthLimited={
-                              message.finish_reason === 'length' ||
-                              state.lengthLimitedMessageIds.includes(message.id)
-                            }
-                            canSend={canSend}
-                            onContinue={() => {
-                              if (!canSend) return;
-                              followLatest();
-                              void store.continueAnswer(message.id, {
-                                thinking,
-                              });
-                            }}
-                            onRegenerate={() => {
-                              if (!canSend) return;
-                              followLatest();
-                              void store.regenerate(message.id, {
-                                thinking,
-                              });
-                            }}
-                          />
-                        </article>
-                      );
-                    })}
+                          {loadingNewer
+                            ? '이후 메시지 불러오는 중…'
+                            : '이후 메시지 불러오기'}
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             </section>
-            {showLatest && (
+            {(showLatest || state.newerMessageCursor !== null) && (
               <Button
                 type="button"
                 variant="outline"
@@ -888,7 +600,7 @@ function Workbench({
                 aria-label="최신 답변으로 이동"
                 title="최신 답변으로 이동"
                 className="absolute bottom-3 left-1/2 size-10 -translate-x-1/2 rounded-full border-border/70 bg-background/95 shadow-md backdrop-blur-sm"
-                onClick={followLatest}
+                onClick={() => void showLatestMessages()}
               >
                 <ArrowDown className="size-4" aria-hidden="true" />
               </Button>
@@ -905,6 +617,10 @@ function Workbench({
             logoutPending={logoutPending}
             canSend={canSend}
             thinking={thinking}
+            onUpload={(file) => void store.uploadFile(file)}
+            onDeleteFile={(id) => void store.changeFile(id, 'delete')}
+            onRetryFile={(id) => void store.changeFile(id, 'retry')}
+            onRefreshFiles={() => void store.refreshFiles()}
             onReconnect={store.reconnect}
             onCancel={() => void store.cancel()}
             onSend={() => void send()}

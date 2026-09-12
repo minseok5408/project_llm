@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models import TokenBudget, UsagePlan
 from backend.app.repositories import Conflict, InvalidInput
-from backend.app.repositories.core import identifier, logged
+from backend.app.repositories.operations import logged
+from backend.app.repositories.validation import identifier
 from backend.app.services.token_quota import TokenQuotaService
 
 FREE_PLAN_CODE = "free-monthly"

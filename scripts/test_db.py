@@ -151,7 +151,7 @@ def main(pytest_args: list[str] | None = None) -> int:
         run(
             [sys.executable, "-m", "pytest", *(pytest_args or [])],
             label="Backend tests",
-            timeout=300,
+            timeout=600,
         )
     except KeyboardInterrupt:
         print("\nInterrupted; removing the temporary test database.", file=sys.stderr)

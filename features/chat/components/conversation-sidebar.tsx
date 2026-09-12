@@ -1,26 +1,25 @@
 'use client';
 
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode, type RefObject } from 'react';
 import {
   Archive,
-  ArchiveRestore,
   ChevronDown,
-  Ellipsis,
   LoaderCircle,
   MessageCircle,
   PanelLeft,
   PanelLeftClose,
-  Pencil,
   Pin,
-  PinOff,
   Search,
   SquarePen,
-  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SheetClose } from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import type { ChatState, Conversation } from '../state/chat-store.ts';
 import { taskLabel } from './generation-activity';
+import { ConversationRowActions } from './conversation-row-actions';
+import { ConversationSidebarSurface } from './conversation-sidebar-surface';
 
 export function ConversationSidebar({
   state,
@@ -28,6 +27,8 @@ export function ConversationSidebar({
   desktopCollapsed = false,
   isGenerating,
   onClose,
+  onMobileClose = onClose,
+  mobileReturnFocus,
   onExpand,
   onNewChat,
   onSearch,
@@ -53,6 +54,8 @@ export function ConversationSidebar({
   desktopCollapsed?: boolean;
   isGenerating: boolean;
   onClose: () => void;
+  onMobileClose?: () => void;
+  mobileReturnFocus?: RefObject<HTMLElement | null>;
   onExpand: () => void;
   onNewChat: () => void;
   onSearch: () => void;
@@ -61,10 +64,11 @@ export function ConversationSidebar({
   onRename: (conversation: Conversation) => void;
   onTogglePin: (conversation: Conversation) => void;
   onToggleArchive: (conversation: Conversation) => void;
-  onDelete: () => void;
+  onDelete: (conversation: Conversation) => void;
   onLoadMore: () => void;
   children: ReactNode;
 }) {
+  const isMobile = useIsMobile();
   const [recentOpen, setRecentOpen] = useState(true);
   const listDetailsOpen = state.filter === 'archived' || recentOpen;
   const listed = [...state.conversations];
@@ -98,13 +102,12 @@ export function ConversationSidebar({
   );
 
   return (
-    <aside
-      className={cn(
-        'absolute inset-y-0 left-0 z-30 w-[260px] max-w-[85vw] shrink-0 flex-col border-r border-sidebar-border/60 bg-sidebar text-sidebar-foreground md:static md:flex',
-        sidebarOpen ? 'flex' : 'hidden',
-        desktopCollapsed && 'md:w-14',
-      )}
-      aria-label="저장된 대화"
+    <ConversationSidebarSurface
+      mobile={isMobile}
+      open={sidebarOpen}
+      collapsed={desktopCollapsed}
+      onMobileClose={onMobileClose}
+      returnFocus={mobileReturnFocus}
     >
       <div
         className={cn(
@@ -146,19 +149,34 @@ export function ConversationSidebar({
         >
           <Search className="size-[18px]" aria-hidden="true" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className={cn(
-            'size-8 rounded-lg p-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
-            desktopCollapsed && 'md:hidden',
-          )}
-          aria-label="사이드바 접기"
-          title="사이드바 접기"
-        >
-          <PanelLeftClose className="size-[18px]" aria-hidden="true" />
-        </Button>
+        {isMobile ? (
+          <SheetClose
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-11 rounded-lg text-muted-foreground hover:bg-sidebar-accent"
+              />
+            }
+            aria-label="대화 목록 닫기"
+          >
+            <PanelLeftClose className="size-[18px]" aria-hidden="true" />
+          </SheetClose>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className={cn(
+              'size-8 rounded-lg p-0 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+              desktopCollapsed && 'md:hidden',
+            )}
+            aria-label="사이드바 접기"
+            title="사이드바 접기"
+          >
+            <PanelLeftClose className="size-[18px]" aria-hidden="true" />
+          </Button>
+        )}
       </div>
       <div
         className={cn(
@@ -270,8 +288,8 @@ export function ConversationSidebar({
                   onOpenConversation(conversation.id);
                 }}
                 className={cn(
-                  'flex min-h-11 items-center gap-2 rounded-lg px-3 py-3 text-[13px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
-                  state.selected?.id === conversation.id && 'pr-12 font-medium',
+                  'flex min-h-11 items-center gap-2 rounded-lg py-3 pl-3 pr-12 text-[13px] leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
+                  state.selected?.id === conversation.id && 'font-medium',
                 )}
                 title={`${conversation.title} · ${new Date(conversation.last_message_at).toLocaleDateString('ko-KR')}`}
                 aria-current={
@@ -312,87 +330,21 @@ export function ConversationSidebar({
                   />
                 )}
               </a>
-              {state.selected?.id === conversation.id && (
-                <details className="open:pb-1" data-chat-menu>
-                  <summary
-                    className="absolute right-1 top-1 flex size-9 cursor-pointer list-none items-center justify-center rounded-lg text-muted-foreground outline-none hover:bg-background/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 [&::-webkit-details-marker]:hidden"
-                    aria-label="대화 관리"
-                  >
-                    <Ellipsis className="size-[18px]" aria-hidden="true" />
-                  </summary>
-                  <div className="mx-1 mb-1 space-y-0.5 rounded-xl border border-border/70 bg-background p-1.5 shadow-sm">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-xs font-normal"
-                      onClick={(event) => {
-                        event.currentTarget
-                          .closest('details')
-                          ?.removeAttribute('open');
-                        onRename(conversation);
-                      }}
-                    >
-                      <Pencil className="size-3.5" aria-hidden="true" />
-                      제목 변경
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-xs font-normal"
-                      onClick={(event) => {
-                        event.currentTarget
-                          .closest('details')
-                          ?.removeAttribute('open');
-                        onTogglePin(conversation);
-                      }}
-                    >
-                      {conversation.is_pinned ? (
-                        <PinOff className="size-3.5" aria-hidden="true" />
-                      ) : (
-                        <Pin className="size-3.5" aria-hidden="true" />
-                      )}
-                      {conversation.is_pinned ? '고정 해제' : '고정'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={isGenerating}
-                      className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-xs font-normal"
-                      onClick={(event) => {
-                        event.currentTarget
-                          .closest('details')
-                          ?.removeAttribute('open');
-                        onToggleArchive(conversation);
-                      }}
-                    >
-                      {conversation.status === 'archived' ? (
-                        <ArchiveRestore
-                          className="size-3.5"
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <Archive className="size-3.5" aria-hidden="true" />
-                      )}
-                      {conversation.status === 'archived' ? '복원' : '보관'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={isGenerating}
-                      className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-xs font-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={(event) => {
-                        event.currentTarget
-                          .closest('details')
-                          ?.removeAttribute('open');
-                        onDelete();
-                      }}
-                    >
-                      <Trash2 className="size-3.5" aria-hidden="true" />
-                      삭제
-                    </Button>
-                  </div>
-                </details>
-              )}
+              <ConversationRowActions
+                conversation={conversation}
+                selected={state.selected?.id === conversation.id}
+                generating={Boolean(
+                  conversation.active_generation_id ||
+                  state.tasks?.some(
+                    (task) => task.conversationId === conversation.id,
+                  ) ||
+                  (state.selected?.id === conversation.id && isGenerating),
+                )}
+                onRename={onRename}
+                onTogglePin={onTogglePin}
+                onToggleArchive={onToggleArchive}
+                onDelete={onDelete}
+              />
             </div>
           </Fragment>
         ))}
@@ -445,6 +397,6 @@ export function ConversationSidebar({
         aria-hidden="true"
       />
       {children}
-    </aside>
+    </ConversationSidebarSurface>
   );
 }

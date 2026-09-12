@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -14,7 +13,6 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,7 +29,6 @@ class Conversation(IdentityTimestamps, Base):
         CheckConstraint("char_length(btrim(title)) BETWEEN 1 AND 300", name="title_length"),
         CheckConstraint("status IN ('active', 'archived')", name="status"),
         CheckConstraint("char_length(btrim(model)) BETWEEN 1 AND 255", name="model_length"),
-        CheckConstraint("jsonb_typeof(settings) = 'object'", name="settings_object"),
         CheckConstraint("next_message_sequence > 0", name="next_message_sequence_positive"),
         Index("ix_conversations_created_by", "created_by"),
         Index(
@@ -55,9 +52,6 @@ class Conversation(IdentityTimestamps, Base):
         String(20), nullable=False, default="active", server_default=text("'active'")
     )
     model: Mapped[str] = mapped_column(String(255), nullable=False)
-    settings: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
-    )
     is_pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )

@@ -1,0 +1,100 @@
+import type { ConversationFileState, FileSource } from '../../files/types.ts';
+import type { ContextStatus } from './context-status.ts';
+import type { TokenBalance } from '../../usage/types.ts';
+import type { SearchMetadata } from '../../network/types.ts';
+import type { ProgressItem, QuestionCard } from './interaction-types.ts';
+
+export type Workspace = { id: string; name: string; role: string };
+export type Conversation = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  status: 'active' | 'archived';
+  is_pinned: boolean;
+  model: string;
+  last_message_at: string;
+  created_at: string;
+  active_generation_id?: string | null;
+  search_match?: {
+    message_id: string;
+    sequence: number;
+    role: 'user' | 'assistant' | 'system';
+    snippet: string;
+  } | null;
+};
+export type ChatMessage = {
+  file_sources?: FileSource[];
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  status: string;
+  sequence: number;
+  token_count: number | null;
+  created_at: string;
+  generation_id?: string | null;
+  user_message_id?: string | null;
+  generation_status?: string | null;
+  is_current?: boolean;
+  can_regenerate?: boolean;
+  finish_reason?: 'stop' | 'length' | null;
+  search?: SearchMetadata | null;
+  progress?: ProgressItem[];
+  question_card?: QuestionCard | null;
+  can_respond?: boolean;
+};
+export type Generation = {
+  file_sources?: FileSource[];
+  progress?: ProgressItem[];
+  context?: ContextStatus | null;
+  id: string;
+  status: string;
+  assistant_message_id: string;
+  cancel_requested?: boolean;
+  stage?: 'compacting' | 'generating' | 'searching';
+  context_compacted?: boolean;
+  search?: SearchMetadata | null;
+  network_mode?: 'auto' | 'local';
+  web_search_mode?: 'auto' | 'on' | 'off';
+};
+export type MessagePage = {
+  context?: ContextStatus | null;
+  items: ChatMessage[];
+  next_cursor: number | null;
+  newer_cursor?: number | null;
+  active_generation_id?: string | null;
+};
+export type ConversationPage = {
+  items: Conversation[];
+  next_cursor: string | null;
+};
+export type AcceptedGeneration = {
+  generation_id: string;
+  user_message_id: string;
+  assistant_message_id: string;
+  events_url: string;
+};
+export type ConversationState = ConversationFileState & {
+  questionDrafts: Record<string, string[]>;
+  context: ContextStatus | null;
+  lastResult: { id: string; status: string } | null;
+  workspaces: Workspace[];
+  workspaceId: string;
+  conversations: Conversation[];
+  conversationCursor: string | null;
+  filter: 'active' | 'archived';
+  selected: Conversation | null;
+  messages: ChatMessage[];
+  messageCursor: number | null;
+  newerMessageCursor: number | null;
+  generation: Generation | null;
+  lengthLimitedMessageIds: string[];
+  usage: TokenBalance | null;
+  loading: boolean;
+  listLoading: boolean;
+  sending: boolean;
+  cancelling: boolean;
+  stream: 'idle' | 'connecting' | 'live' | 'reconnecting' | 'paused';
+  draft: string;
+  error: string | null;
+};

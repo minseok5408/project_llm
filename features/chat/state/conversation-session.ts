@@ -1,97 +1,38 @@
+import { ApiError, responseError } from '../../../lib/http.ts';
+import type { RequestFn } from '../../../lib/http.ts';
+import { ConversationFiles } from '../../files/state/conversation-files.ts';
+import { GenerationStream } from './generation-stream.ts';
 import { validContextStatus } from './context-status.ts';
-import type { ContextStatus } from './context-status.ts';
-import type { TokenBalance } from '../../usage/types.ts';
-import { responseError } from '../../auth/state/auth-session.ts';
-import {
-  consumeGenerationEvents,
-  requestId,
-  terminalGeneration,
-} from '../stream/chat-stream.ts';
-import type { GenerationEvent } from '../stream/chat-stream.ts';
+import { requestId, terminalGeneration } from '../stream/chat-stream.ts';
 import type { GenerationNetworkPolicy } from '../../network/state/network-mode-store.ts';
-import type { SearchMetadata } from '../../network/types.ts';
+import type { TokenBalance } from '../../usage/types.ts';
+import type {
+  Workspace,
+  Conversation,
+  ChatMessage,
+  Generation,
+  ConversationState,
+  ConversationPage,
+  MessagePage,
+  AcceptedGeneration,
+} from './conversation-types.ts';
 
-export type Workspace = { id: string; name: string; role: string };
-export type Conversation = {
-  id: string;
-  workspace_id: string;
-  title: string;
-  status: 'active' | 'archived';
-  is_pinned: boolean;
-  model: string;
-  last_message_at: string;
-  created_at: string;
-  active_generation_id?: string | null;
-};
-export type ChatMessage = {
-  id: string;
-  conversation_id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  status: string;
-  sequence: number;
-  token_count: number | null;
-  created_at: string;
-  generation_id?: string | null;
-  generation_status?: string | null;
-  is_current?: boolean;
-  can_regenerate?: boolean;
-  finish_reason?: 'stop' | 'length' | null;
-  search?: SearchMetadata | null;
-};
-export type Generation = {
-  context?: ContextStatus | null;
-  id: string;
-  status: string;
-  assistant_message_id: string;
-  cancel_requested?: boolean;
-  stage?: 'compacting' | 'generating' | 'searching';
-  context_compacted?: boolean;
-  search?: SearchMetadata | null;
-  network_mode?: 'auto' | 'local';
-  web_search_mode?: 'auto' | 'on' | 'off';
-};
-type MessagePage = {
-  context?: ContextStatus | null;
-  items: ChatMessage[];
-  next_cursor: number | null;
-  active_generation_id?: string | null;
-};
-type ConversationPage = { items: Conversation[]; next_cursor: string | null };
-type AcceptedGeneration = {
-  generation_id: string;
-  user_message_id: string;
-  assistant_message_id: string;
-  events_url: string;
-};
-export type ConversationState = {
-  context: ContextStatus | null;
-  lastResult: { id: string; status: string } | null;
-  workspaces: Workspace[];
-  workspaceId: string;
-  conversations: Conversation[];
-  conversationCursor: string | null;
-  filter: 'active' | 'archived';
-  selected: Conversation | null;
-  messages: ChatMessage[];
-  messageCursor: number | null;
-  generation: Generation | null;
-  lengthLimitedMessageIds: string[];
-  usage: TokenBalance | null;
-  loading: boolean;
-  listLoading: boolean;
-  sending: boolean;
-  cancelling: boolean;
-  stream: 'idle' | 'connecting' | 'live' | 'reconnecting' | 'paused';
-  draft: string;
-  error: string | null;
-};
-export type RequestFn = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type { RequestFn } from '../../../lib/http.ts';
+export type {
+  Workspace,
+  Conversation,
+  ChatMessage,
+  Generation,
+  ConversationState,
+} from './conversation-types.ts';
 
 export const INITIAL_STATE: ConversationState = {
+  files: [],
+  filesEnabled: true,
+  filesLoading: false,
+  fileBusy: false,
+  fileError: null,
+  questionDrafts: {},
   context: null,
   lastResult: null,
   workspaces: [],
@@ -102,6 +43,7 @@ export const INITIAL_STATE: ConversationState = {
   selected: null,
   messages: [],
   messageCursor: null,
+  newerMessageCursor: null,
   generation: null,
   lengthLimitedMessageIds: [],
   usage: null,
@@ -114,67 +56,10 @@ export const INITIAL_STATE: ConversationState = {
   error: null,
 };
 
-class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
-
 export function mergeMessages(older: ChatMessage[], current: ChatMessage[]) {
   return [
     ...new Map([...older, ...current].map((item) => [item.id, item])).values(),
   ].sort((left, right) => left.sequence - right.sequence);
-}
-
-function pause(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const abort = () => {
-      clearTimeout(timer);
-      reject(signal.reason);
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', abort);
-      resolve();
-    }, ms);
-    signal.addEventListener('abort', abort, { once: true });
-  });
-}
-
-function validSearchMetadata(value: unknown): value is SearchMetadata {
-  if (!value || typeof value !== 'object') return false;
-  const data = value as Partial<SearchMetadata>;
-  return (
-    [
-      'pending',
-      'searching',
-      'completed',
-      'disabled',
-      'unavailable',
-      'failed',
-      'no_results',
-      'cancelled',
-      'omitted',
-    ].includes(data.status ?? '') &&
-    (data.reason === null || typeof data.reason === 'string') &&
-    typeof data.provider === 'string' &&
-    Array.isArray(data.sources) &&
-    data.sources.every(
-      (source) =>
-        source &&
-        Number.isSafeInteger(source.number) &&
-        source.number > 0 &&
-        typeof source.title === 'string' &&
-        typeof source.url === 'string' &&
-        typeof source.snippet === 'string' &&
-        typeof source.retrieved_at === 'string',
-    )
-  );
 }
 
 // 대화 하나의 초안·메시지·생성 연결을 계정 세션의 메모리에 유지한다.
@@ -186,11 +71,10 @@ export class ConversationSession {
   private networkPolicy: () => GenerationNetworkPolicy;
   private lifetime = new AbortController();
   private view = new AbortController();
-  private streamController: AbortController | null = null;
+  private files: ConversationFiles;
+  private generationStream: GenerationStream;
   private listVersion = 0;
   private messageVersion = 0;
-  private lastEventId = 0;
-  private replayText = '';
   private pending: {
     conversationId: string;
     path: string;
@@ -203,12 +87,42 @@ export class ConversationSession {
     navigate: (id: string | null) => void = () => {},
     networkPolicy: () => GenerationNetworkPolicy = () => ({
       network_mode: 'local',
-      web_search: 'auto',
+      web_search: 'off',
     }),
   ) {
     this.request = request;
     this.navigate = navigate;
     this.networkPolicy = networkPolicy;
+    this.files = new ConversationFiles({
+      json: (path, init) => this.json(path, init),
+      getContext: () => ({
+        conversationId: this.state.selected?.id ?? null,
+        busy: this.state.fileBusy,
+        canUpload:
+          !this.state.sending &&
+          !this.state.loading &&
+          Boolean(this.state.workspaceId) &&
+          this.state.selected?.status !== 'archived',
+      }),
+      getSignal: () => this.view.signal,
+      publish: (patch) => this.publish(patch),
+      ensureConversation: (title, signal) =>
+        this.ensureConversation(title, signal),
+      onUploaded: () => {
+        void this.loadConversations();
+      },
+      onDeleted: (signal) => this.refreshMessages(signal),
+    });
+    this.generationStream = new GenerationStream({
+      request: this.request,
+      json: (path, init) => this.json(path, init),
+      getState: () => this.state,
+      getSignal: () =>
+        AbortSignal.any([this.view.signal, this.lifetime.signal]),
+      publish: (patch) => this.publish(patch),
+      onFinished: (status, signal) => this.finishGeneration(status, signal),
+      onError: (error) => this.fail(error),
+    });
   }
   seed = (state: Partial<ConversationState>) => this.publish(state);
   getSnapshot = () => this.state;
@@ -343,21 +257,24 @@ export class ConversationSession {
     await this.loadConversations();
   };
   private stopViewing() {
+    this.files.reset();
     this.messageVersion += 1;
     this.view.abort();
     this.view = new AbortController();
-    this.streamController?.abort();
-    this.streamController = null;
-    this.lastEventId = 0;
-    this.replayText = '';
+    this.generationStream.reset();
   }
   newDraft = () => {
     this.stopViewing();
     this.pending = null;
     this.publish({
       selected: null,
+      files: [],
+      filesLoading: false,
+      fileBusy: false,
+      fileError: null,
       messages: [],
       messageCursor: null,
+      newerMessageCursor: null,
       generation: null,
       lengthLimitedMessageIds: [],
       context: null,
@@ -381,8 +298,13 @@ export class ConversationSession {
     if (!preserveDraft) this.pending = null;
     this.publish({
       selected: null,
+      files: [],
+      filesLoading: false,
+      fileBusy: false,
+      fileError: null,
       messages: [],
       messageCursor: null,
+      newerMessageCursor: null,
       generation: null,
       lengthLimitedMessageIds: [],
       context: null,
@@ -412,12 +334,14 @@ export class ConversationSession {
         workspaceId: conversation.workspace_id,
         messages: messages.items,
         messageCursor: messages.next_cursor,
+        newerMessageCursor: messages.newer_cursor ?? null,
         loading: false,
       });
       void this.loadConversations();
+      void this.refreshFiles();
       const activeId =
         messages.active_generation_id ?? conversation.active_generation_id;
-      if (activeId) await this.attachGeneration(activeId, view.signal);
+      if (activeId) await this.generationStream.attach(activeId, view.signal);
     } catch (error) {
       if (!view.signal.aborted) {
         this.publish({ loading: false });
@@ -429,12 +353,13 @@ export class ConversationSession {
     const { selected, messageCursor } = this.state;
     if (!selected || !messageCursor) return;
     const view = this.view;
+    const version = this.messageVersion;
     try {
       const page = await this.json<MessagePage>(
         `/api/v1/conversations/${selected.id}/messages?limit=50&before=${messageCursor}`,
         { signal: view.signal },
       );
-      if (!view.signal.aborted)
+      if (!view.signal.aborted && version === this.messageVersion)
         this.publish({
           messages: mergeMessages(page.items, this.state.messages),
           messageCursor: page.next_cursor,
@@ -443,9 +368,71 @@ export class ConversationSession {
       if (!view.signal.aborted) this.fail(error);
     }
   };
-  private async refreshMessages(signal = this.view.signal) {
+  revealMessage = async (messageId: string) => {
+    const version = ++this.messageVersion;
+    if (this.state.messages.some((message) => message.id === messageId))
+      return true;
+    const id = this.state.selected?.id;
+    if (!id) return false;
+    const view = this.view;
+    try {
+      const query = new URLSearchParams({ limit: '50', around: messageId });
+      const page = await this.json<MessagePage>(
+        `/api/v1/conversations/${id}/messages?${query}`,
+        { signal: view.signal },
+      );
+      if (view.signal.aborted || version !== this.messageVersion) return false;
+      if (!page.items.some((message) => message.id === messageId))
+        throw new ApiError(
+          '검색한 메시지를 찾을 수 없습니다. 다시 검색해 주세요.',
+          404,
+        );
+      this.publish({
+        messages: page.items,
+        messageCursor: page.next_cursor,
+        newerMessageCursor: page.newer_cursor ?? null,
+        error: null,
+      });
+      return true;
+    } catch (error) {
+      if (!view.signal.aborted && version === this.messageVersion)
+        this.fail(error);
+      return false;
+    }
+  };
+  newerMessages = async () => {
+    const { selected, newerMessageCursor } = this.state;
+    if (!selected || newerMessageCursor === null) return;
+    const view = this.view;
+    const version = this.messageVersion;
+    try {
+      const page = await this.json<MessagePage>(
+        `/api/v1/conversations/${selected.id}/messages?limit=50&after=${newerMessageCursor}`,
+        { signal: view.signal },
+      );
+      if (!view.signal.aborted && version === this.messageVersion)
+        this.publish({
+          messages: mergeMessages(this.state.messages, page.items),
+          newerMessageCursor: page.newer_cursor ?? null,
+        });
+    } catch (error) {
+      if (!view.signal.aborted && version === this.messageVersion)
+        this.fail(error);
+    }
+  };
+  latestMessages = async () => {
+    try {
+      return Boolean(await this.refreshMessages(this.view.signal, true));
+    } catch (error) {
+      this.fail(error);
+      return false;
+    }
+  };
+  private async refreshMessages(signal = this.view.signal, latest = false) {
     const id = this.state.selected?.id;
     if (!id) return;
+    // 검색으로 연 과거 구간을 최신 페이지와 합쳐 중간 메시지가 빠진 것처럼 보이지 않게 한다.
+    if (!latest && this.state.newerMessageCursor !== null) return;
     const version = ++this.messageVersion;
     const result = await this.json<MessagePage>(
       `/api/v1/conversations/${id}/messages?limit=50`,
@@ -455,30 +442,56 @@ export class ConversationSession {
     if (!signal.aborted && this.state.selected?.id === id) {
       this.publish({
         context: validContextStatus(result.context) ? result.context : null,
-        messages: mergeMessages(this.state.messages, result.items),
+        messages: latest
+          ? result.items
+          : mergeMessages(this.state.messages, result.items),
         messageCursor:
-          this.state.messages.length > 50
+          !latest && this.state.messages.length > 50
             ? this.state.messageCursor
             : result.next_cursor,
+        newerMessageCursor: result.newer_cursor ?? null,
       });
     }
     return result;
   }
-  updateConversation = async (patch: {
-    title?: string;
-    is_pinned?: boolean;
-    status?: 'active' | 'archived';
-  }) => {
-    if (!this.state.selected) return false;
-    const id = this.state.selected.id;
+  refreshFiles = () => this.files.refresh();
+  uploadFile = (file: File) => this.files.upload(file);
+  changeFile = (id: string, action: 'delete' | 'retry') =>
+    this.files.change(id, action);
+
+  private async ensureConversation(title: string, signal: AbortSignal) {
+    const selected = this.state.selected;
+    if (selected) return selected.id;
+    const conversation = await this.write<Conversation>(
+      '/api/v1/conversations',
+      'POST',
+      { workspace_id: this.state.workspaceId, title },
+      { signal },
+    );
+    if (signal.aborted) return null;
+    this.publish({ selected: conversation });
+    this.navigate(conversation.id);
+    return conversation.id;
+  }
+  updateConversation = async (
+    patch: {
+      title?: string;
+      is_pinned?: boolean;
+      status?: 'active' | 'archived';
+    },
+    id = this.state.selected?.id,
+  ) => {
+    if (!id) return false;
     try {
       const conversation = await this.write<Conversation>(
         `/api/v1/conversations/${id}`,
         'PATCH',
         patch,
       );
-      if (this.state.selected?.id === id)
-        this.publish({ selected: conversation, error: null });
+      this.publish({
+        ...(this.state.selected?.id === id ? { selected: conversation } : {}),
+        error: null,
+      });
       await this.loadConversations();
       return true;
     } catch (error) {
@@ -486,15 +499,17 @@ export class ConversationSession {
       return false;
     }
   };
-  deleteConversation = async () => {
-    if (!this.state.selected) return;
-    const id = this.state.selected.id;
+  deleteConversation = async (id = this.state.selected?.id) => {
+    if (!id) return false;
     try {
       await this.write(`/api/v1/conversations/${id}`, 'DELETE', {});
+      this.publish({ error: null });
       if (this.state.selected?.id === id) this.newDraft();
       await this.loadConversations();
+      return true;
     } catch (error) {
       this.fail(error);
+      return false;
     }
   };
   send = async (
@@ -505,6 +520,10 @@ export class ConversationSession {
     content = content.trim();
     if (
       !content ||
+      this.state.fileBusy ||
+      this.state.filesLoading ||
+      (this.state.filesEnabled &&
+        this.state.files.some((file) => file.status !== 'ready')) ||
       this.state.sending ||
       this.state.generation ||
       this.state.loading
@@ -515,32 +534,75 @@ export class ConversationSession {
     const view = this.view;
     this.publish({ sending: true, error: null });
     try {
-      let conversation = this.state.selected;
-      if (!conversation) {
-        conversation = await this.write<Conversation>(
-          '/api/v1/conversations',
-          'POST',
-          {
-            workspace_id: this.state.workspaceId,
-            title: content.slice(0, 60),
-          },
-          { signal: view.signal },
-        );
-        if (view.signal.aborted) return false;
-        this.publish({ selected: conversation });
-        this.navigate(conversation.id);
-      }
+      const conversationId = await this.ensureConversation(
+        content.slice(0, 60),
+        view.signal,
+      );
+      if (!conversationId || view.signal.aborted) return false;
       const body = JSON.stringify({
         content,
         options,
         ...this.networkPolicy(),
       });
       await this.submitGeneration(
-        conversation.id,
-        `/api/v1/conversations/${conversation.id}/messages`,
+        conversationId,
+        `/api/v1/conversations/${conversationId}/messages`,
         body,
         view.signal,
         clearDraft,
+      );
+      return !view.signal.aborted;
+    } catch (error) {
+      if (!view.signal.aborted) {
+        this.fail(error);
+        if (this.state.generation) this.publish({ stream: 'paused' });
+      }
+      return false;
+    } finally {
+      if (!view.signal.aborted) this.publish({ sending: false });
+    }
+  };
+  setQuestionAnswer = (messageId: string, index: number, value: string) => {
+    const message = this.state.messages.find((item) => item.id === messageId);
+    if (!message?.can_respond || !message.question_card?.questions[index])
+      return;
+    const answers = [...(this.state.questionDrafts[messageId] ?? [])];
+    answers[index] = value.slice(0, 2000);
+    this.publish({
+      questionDrafts: { ...this.state.questionDrafts, [messageId]: answers },
+    });
+  };
+  respondToQuestions = async (
+    messageId: string,
+    options: { thinking: boolean; max_tokens?: number },
+  ) => {
+    const { selected, sending, generation, loading } = this.state;
+    const message = this.state.messages.find((item) => item.id === messageId);
+    const answers = (message?.question_card?.questions ?? []).map((_, index) =>
+      (this.state.questionDrafts[messageId]?.[index] ?? '').trim(),
+    );
+    if (
+      !selected ||
+      selected.status === 'archived' ||
+      sending ||
+      generation ||
+      loading ||
+      !message?.can_respond ||
+      !message.generation_id ||
+      !message.question_card ||
+      answers.length !== message.question_card.questions.length ||
+      answers.some((answer) => !answer)
+    )
+      return false;
+    const view = this.view;
+    this.publish({ sending: true, error: null });
+    try {
+      await this.submitGeneration(
+        selected.id,
+        `/api/v1/generations/${message.generation_id}/respond`,
+        JSON.stringify({ answers, options, ...this.networkPolicy() }),
+        view.signal,
+        false,
       );
       return !view.signal.aborted;
     } catch (error) {
@@ -567,7 +629,7 @@ export class ConversationSession {
     )
       return false;
     return this.send(
-      '직전 답변이 길이 제한으로 끊겼습니다. 앞의 내용을 반복하지 말고 중단된 부분부터 이어서 완성해 주세요.',
+      '직전 답변이 길이 제한으로 끊겼습니다. 직전 답변의 언어를 그대로 유지하고, 앞의 내용을 반복하지 말고 중단된 부분부터 이어서 완성해 주세요.',
       options,
       false,
     );
@@ -645,123 +707,11 @@ export class ConversationSession {
       },
       stream: 'connecting',
     });
-    await this.refreshMessages(signal);
+    await this.refreshMessages(signal, this.state.newerMessageCursor !== null);
     if (!signal.aborted)
-      await this.attachGeneration(accepted.generation_id, signal);
+      await this.generationStream.attach(accepted.generation_id, signal);
     void this.refreshUsage();
     void this.loadConversations();
-  }
-  private async attachGeneration(id: string, signal: AbortSignal) {
-    const generation = await this.json<Generation>(
-      `/api/v1/generations/${id}`,
-      { signal },
-    );
-    if (signal.aborted) return;
-    this.publish({
-      context: validContextStatus(generation.context)
-        ? generation.context
-        : this.state.context,
-    });
-    if (terminalGeneration(generation.status)) {
-      this.publish({ generation });
-      await this.finishGeneration(generation.status, signal);
-      return;
-    }
-    this.lastEventId = 0;
-    this.replayText = '';
-    this.publish({
-      generation,
-      stream: 'connecting',
-      messages: this.state.messages.map((message) =>
-        message.id === generation.assistant_message_id &&
-        !generation.cancel_requested
-          ? { ...message, content: '' }
-          : message,
-      ),
-    });
-    void this.watchGeneration();
-  }
-  private applyEvent(event: GenerationEvent) {
-    if (!this.state.generation || event.id <= this.lastEventId) return;
-    if (
-      typeof event.data.generation_id === 'string' &&
-      event.data.generation_id !== this.state.generation.id
-    )
-      return;
-    this.lastEventId = event.id;
-    if (event.event === 'meta')
-      this.publish({
-        ...(validContextStatus(event.data.context) &&
-        event.data.context.generation_id === this.state.generation.id
-          ? { context: event.data.context }
-          : {}),
-        ...(validSearchMetadata(event.data.search)
-          ? {
-              messages: this.state.messages.map((message) =>
-                message.id === this.state.generation?.assistant_message_id
-                  ? { ...message, search: event.data.search as SearchMetadata }
-                  : message,
-              ),
-            }
-          : {}),
-        generation: {
-          ...this.state.generation,
-          status:
-            typeof event.data.status === 'string'
-              ? event.data.status
-              : this.state.generation.status,
-          cancel_requested:
-            this.state.generation.cancel_requested ||
-            event.data.cancel_requested === true,
-          assistant_message_id:
-            typeof event.data.assistant_message_id === 'string'
-              ? event.data.assistant_message_id
-              : this.state.generation.assistant_message_id,
-          stage:
-            event.data.stage === 'compacting' ||
-            event.data.stage === 'generating' ||
-            event.data.stage === 'searching'
-              ? event.data.stage
-              : this.state.generation.stage,
-          context_compacted:
-            this.state.generation.context_compacted ||
-            event.data.context_compacted === true,
-          search: validSearchMetadata(event.data.search)
-            ? event.data.search
-            : this.state.generation.search,
-        },
-      });
-    if (
-      event.event === 'delta' &&
-      typeof event.data.text === 'string' &&
-      !this.state.cancelling &&
-      !this.state.generation.cancel_requested
-    ) {
-      this.replayText += event.data.text;
-      const assistantId = this.state.generation.assistant_message_id;
-      this.publish({
-        messages: this.state.messages.map((message) =>
-          message.id === assistantId
-            ? { ...message, content: this.replayText }
-            : message,
-        ),
-      });
-    }
-    if (event.event === 'error')
-      this.publish({
-        error:
-          typeof event.data.message === 'string'
-            ? event.data.message
-            : '생성에 실패했습니다.',
-      });
-    if (event.event === 'done' && event.data.finish_reason === 'length') {
-      const assistantId = this.state.generation.assistant_message_id;
-      this.publish({
-        lengthLimitedMessageIds: [
-          ...new Set([...this.state.lengthLimitedMessageIds, assistantId]),
-        ],
-      });
-    }
   }
   private async finishGeneration(status: string, signal: AbortSignal) {
     if (signal.aborted) return;
@@ -802,85 +752,6 @@ export class ConversationSession {
     void this.refreshUsage();
     void this.loadConversations();
   }
-  private async watchGeneration() {
-    const generation = this.state.generation;
-    if (!generation) return;
-    this.streamController?.abort();
-    const controller = new AbortController();
-    this.streamController = controller;
-    const signal = AbortSignal.any([
-      controller.signal,
-      this.view.signal,
-      this.lifetime.signal,
-    ]);
-    let failures = 0;
-    while (!signal.aborted && this.state.generation?.id === generation.id) {
-      try {
-        this.publish({ stream: failures ? 'reconnecting' : 'connecting' });
-        const response = await this.request(
-          `/api/v1/generations/${generation.id}/events?after=${this.lastEventId}`,
-          {
-            headers: {
-              Accept: 'text/event-stream',
-              'Last-Event-ID': String(this.lastEventId),
-            },
-            signal,
-          },
-        );
-        if (!response.ok)
-          throw new ApiError(
-            await responseError(response, '생성 상태 연결에 실패했습니다.'),
-            response.status,
-          );
-        if (signal.aborted) return;
-        this.publish({ stream: 'live' });
-        await consumeGenerationEvents(response, (event) => {
-          if (!signal.aborted) this.applyEvent(event);
-        });
-        if (signal.aborted) return;
-        const current = await this.json<Generation>(
-          `/api/v1/generations/${generation.id}`,
-          { signal },
-        );
-        if (terminalGeneration(current.status)) {
-          if (validContextStatus(current.context))
-            this.publish({ context: current.context });
-          await this.finishGeneration(current.status, signal);
-          return;
-        }
-        this.publish({ generation: { ...this.state.generation, ...current } });
-      } catch (error) {
-        if (
-          signal.aborted ||
-          (error instanceof Error && error.name === 'AbortError')
-        )
-          return;
-        failures += 1;
-        if (
-          error instanceof ApiError &&
-          [401, 403, 404].includes(error.status)
-        ) {
-          this.fail(error);
-          this.publish({ stream: 'paused' });
-          return;
-        }
-        if (failures >= 5) {
-          this.publish({
-            stream: 'paused',
-            error:
-              '연결이 끊겼습니다. 생성은 서버에서 계속될 수 있으니 다시 연결해 주세요.',
-          });
-          return;
-        }
-      }
-      this.publish({ stream: 'reconnecting' });
-      try {
-        await pause(Math.min(1000 * 2 ** failures, 10_000), signal);
-      } catch {
-        return;
-      }
-    }
-  }
   reconnect = async () => {
     const view = this.view;
     const generation = this.state.generation;
@@ -894,13 +765,13 @@ export class ConversationSession {
       try {
         await this.refreshMessages(view.signal);
         if (view.signal.aborted) return;
-        await this.attachGeneration(generation.id, view.signal);
+        await this.generationStream.attach(generation.id, view.signal);
       } catch (error) {
         if (!view.signal.aborted) this.fail(error);
       }
       return;
     }
-    void this.watchGeneration();
+    void this.generationStream.watch();
   };
   cancel = async () => {
     if (!this.state.generation || this.state.cancelling) return;
@@ -924,7 +795,7 @@ export class ConversationSession {
         },
       });
       if (terminalGeneration(result.status)) {
-        this.streamController?.abort();
+        this.generationStream.stop();
         await this.finishGeneration(result.status, view.signal);
         return;
       }
@@ -948,7 +819,10 @@ export class ConversationSession {
           this.state.selected?.id === selectedId &&
           page?.active_generation_id
         )
-          await this.attachGeneration(page.active_generation_id, view.signal);
+          await this.generationStream.attach(
+            page.active_generation_id,
+            view.signal,
+          );
       } catch (error) {
         this.fail(error);
       }

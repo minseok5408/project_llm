@@ -10,6 +10,7 @@ from backend.app.models import (
     GenerationRun,
 )
 from backend.app.repositories import AccessDenied, Repository
+from backend.app.runtime.progress import finish_progress
 
 ACTIVE_STATUSES = ("queued", "running")
 TERMINAL_STATUSES = ("completed", "failed", "cancelled", "usage_pending")
@@ -33,6 +34,10 @@ def run_payload(run: GenerationRun) -> dict:
         "network_mode": run.network_mode,
         "web_search_mode": run.web_search_mode,
         "cancel_requested": run.cancel_requested,
+        "recall_sources": run.recall_sources,
+        "file_sources": run.file_sources,
+        "progress": run.progress,
+        "question_card": run.question_card,
         "last_event_id": run.last_event_sequence,
         "error_code": run.error_code,
         "events_url": f"/api/v1/generations/{run.id}/events",
@@ -41,6 +46,9 @@ def run_payload(run: GenerationRun) -> dict:
 
 
 def add_event(session: AsyncSession, run: GenerationRun, kind: str, payload: dict) -> None:
+    if kind in ("done", "error", "cancelled"):
+        finish_progress(run)
+        payload = {**payload, "progress": run.progress}
     run.last_event_sequence += 1
     session.add(
         GenerationEvent(

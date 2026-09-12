@@ -8,7 +8,6 @@ import {
   type RefObject,
 } from 'react';
 import {
-  Archive,
   LoaderCircle,
   MessageCircle,
   Search,
@@ -25,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import type { AuthSessionStore } from '../../auth/state/auth-session.ts';
 import { ConversationSearchStore } from '../state/conversation-search-store.ts';
+import { ConversationSearchResult } from './conversation-search-result.tsx';
 
 export function ConversationSearchDialog({
   open,
@@ -40,7 +40,7 @@ export function ConversationSearchDialog({
   workspaceId: string;
   request: AuthSessionStore['request'];
   returnFocus: RefObject<HTMLElement | null>;
-  onOpenConversation: (id: string) => void;
+  onOpenConversation: (id: string, messageId?: string) => void;
   onNewChat: () => void;
 }) {
   const [store] = useState(
@@ -154,39 +154,14 @@ export function ConversationSearchDialog({
               <ul aria-label="채팅 검색 결과" className="space-y-0.5">
                 {state.items.map((item) => (
                   <li key={item.id}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3.5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-                      onClick={() => {
+                    <ConversationSearchResult
+                      conversation={item}
+                      query={state.query}
+                      onOpen={(id, messageId) => {
                         onOpenChange(false);
-                        onOpenConversation(item.id);
+                        onOpenConversation(id, messageId);
                       }}
-                    >
-                      <MessageCircle
-                        className="size-[18px] shrink-0 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm">
-                          {item.title}
-                        </span>
-                        {item.status === 'archived' && (
-                          <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <Archive className="size-3" aria-hidden="true" />
-                            보관된 대화
-                          </span>
-                        )}
-                      </span>
-                      <time
-                        className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
-                        dateTime={item.last_message_at}
-                      >
-                        {new Date(item.last_message_at).toLocaleDateString(
-                          'ko-KR',
-                          { month: 'short', day: 'numeric' },
-                        )}
-                      </time>
-                    </button>
+                    />
                   </li>
                 ))}
               </ul>

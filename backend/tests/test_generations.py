@@ -915,10 +915,13 @@ async def test_default_output_limit_fits_remaining_context(harness: Harness) -> 
     submitted = await harness.submit(options=options, idempotency_key=key)
     pending = await snapshot(harness.database, submitted["id"])
     assert pending.run.max_output_tokens == 700
-    assert pending.run.options["max_tokens"] == 700
+    assert pending.run.thinking is True
     assert (
         pending.run.prompt_tokens + pending.run.max_output_tokens
         == harness.settings.llm_context_window
     )
     retried = await harness.submit(options=options, idempotency_key=key)
     assert retried["id"] == submitted["id"]
+    job = await harness.worker.claim()
+    assert job["id"] == pending.run.id
+    assert job["options"] == {"thinking": True, "max_tokens": 700}

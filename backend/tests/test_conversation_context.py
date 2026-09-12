@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from backend.app.context.builder import (
     SYSTEM_PROMPT,
@@ -201,7 +202,7 @@ class ContextFixture:
                 idempotency_key=uuid4(),
                 request_hash="a" * 64,
                 request_messages=[],
-                options={},
+                thinking=False,
                 prompt_tokens=10,
                 max_output_tokens=1024,
                 status=status,
@@ -290,12 +291,16 @@ async def test_foreign_and_incorrectly_linked_messages_are_excluded(
     await context_fixture.add_run(
         "다른 대화 질문", "다른 대화 답변", conversation=context_fixture.other_conversation
     )
-    await context_fixture.add_run(
-        "외부 질문", "잘못 연결된 답변", user_conversation=context_fixture.other_conversation
-    )
-    await context_fixture.add_run(
-        "잘못 연결된 질문", "외부 답변", assistant_conversation=context_fixture.other_conversation
-    )
+    with pytest.raises(IntegrityError):
+        await context_fixture.add_run(
+            "외부 질문", "잘못 연결된 답변", user_conversation=context_fixture.other_conversation
+        )
+    with pytest.raises(IntegrityError):
+        await context_fixture.add_run(
+            "잘못 연결된 질문",
+            "외부 답변",
+            assistant_conversation=context_fixture.other_conversation,
+        )
     await context_fixture.add_run("역할이 바뀐 질문", "역할이 바뀐 답변", swapped_roles=True)
     turns = await context_fixture.turns()
     assert [(item.user_content, item.assistant_content) for item in turns] == [

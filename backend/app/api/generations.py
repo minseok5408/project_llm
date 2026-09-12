@@ -32,6 +32,7 @@ from backend.app.services.generations import GenerationService
 from backend.app.services.generations.admission import QueueFull
 from backend.app.services.generations.events import TERMINAL_STATUSES, accessible_run, run_payload
 from backend.app.services.token_quota import QuotaExceeded
+from backend.app.tools.questions import AnswerText
 from backend.app.tools.web_search.service import search_payload
 
 router = APIRouter(prefix="/api/v1", tags=["generations"])
@@ -55,6 +56,10 @@ class RegeneratePayload(BaseModel):
     options: GenerationOptions = Field(default_factory=GenerationOptions)
     network_mode: Literal["auto", "local"] | None = None
     web_search: Literal["auto", "on", "off"] = "auto"
+
+
+class QuestionResponsePayload(RegeneratePayload):
+    answers: list[AnswerText] = Field(min_length=1, max_length=3)
 
 
 def idempotency_key(request: Request) -> UUID:
@@ -146,6 +151,26 @@ async def regenerate_answer(generation_id: str, request: Request, auth: WriteAut
         result = await service(request).regenerate(
             auth.user.id,
             parse_id(generation_id),
+            options=payload.options,
+            idempotency_key=key,
+            network_mode=payload.network_mode,
+            web_search=payload.web_search,
+        )
+    return private_json(result, status_code=202)
+
+
+@router.post("/generations/{generation_id}/respond", status_code=202)
+async def respond_to_questions(
+    generation_id: str, request: Request, auth: WriteAuth
+) -> JSONResponse:
+    read_query(request, EmptyPayload)
+    key = idempotency_key(request)
+    payload = await read_json_payload(request, QuestionResponsePayload, max_bytes=40000)
+    async with generation_errors():
+        result = await service(request).respond(
+            auth.user.id,
+            parse_id(generation_id),
+            answers=payload.answers,
             options=payload.options,
             idempotency_key=key,
             network_mode=payload.network_mode,

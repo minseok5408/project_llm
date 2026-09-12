@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models import AuthSession, User
 from backend.app.repositories import AccessDenied, InvalidInput, create_user_with_workspace
-from backend.app.repositories.core import logged, required_text
+from backend.app.repositories.operations import logged
+from backend.app.repositories.validation import required_text
 
 logger = logging.getLogger(__name__)
 

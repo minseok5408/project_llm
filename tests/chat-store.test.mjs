@@ -99,7 +99,7 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     return store;
   }
 
-  it('길이 제한 답변을 이어서 생성할 때 서버 기본 한도를 사용하고 초안을 보존한다', async () => {
+  it('이어서 생성 버튼은 직전 답변 언어 유지를 요청하고 서버 기본 한도와 초안을 보존한다', async () => {
     const attempts = [];
     let finishReason = 'length';
     let allowed = true;
@@ -108,7 +108,7 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
         return Response.json({
           items: [
             {
-              ...message('assistant-1', 2, '중단된 답변'),
+              ...message('assistant-1', 2, 'The next step is'),
               finish_reason: finishReason,
               is_current: true,
               can_regenerate: allowed,
@@ -136,7 +136,10 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
       true,
     );
     assert.deepEqual(attempts[0].options, { thinking: true });
-    assert.match(attempts[0].content, /중단된 부분부터/);
+    assert.equal(
+      attempts[0].content,
+      '직전 답변이 길이 제한으로 끊겼습니다. 직전 답변의 언어를 그대로 유지하고, 앞의 내용을 반복하지 말고 중단된 부분부터 이어서 완성해 주세요.',
+    );
     assert.equal(store.getSnapshot().draft, '작성 중인 질문');
     finishReason = 'stop';
     await store.initialize(C);
@@ -152,6 +155,11 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
       false,
     );
     assert.equal(attempts.length, 1);
+    assert.equal(
+      await store.send('이제 직업 계획을 설명해줘', { thinking: false }),
+      true,
+    );
+    assert.equal(attempts[1].content, '이제 직업 계획을 설명해줘');
   });
 
   it('deep link로 DB 메시지와 공간을 복원하고 사용자 한도를 읽는다', async () => {
@@ -190,7 +198,7 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
       content: '내 질문',
       options,
       network_mode: 'local',
-      web_search: 'auto',
+      web_search: 'off',
     });
     assert.equal('messages' in attempts[0].body, false);
     assert.equal(attempts[0].key, attempts[1].key);
@@ -221,9 +229,9 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     assert.equal(store.getSnapshot().selected.id, C);
   });
 
-  it('질문과 재생성 모두 현재 검색 설정을 담고 모드 변경은 별도 재시도 키를 사용한다', async () => {
+  it('질문과 재생성 모두 데이터 사용 설정을 담고 변경 시 별도 재시도 키를 사용한다', async () => {
     const attempts = [];
-    let policy = { network_mode: 'auto', web_search: 'on' };
+    let policy = { network_mode: 'auto', web_search: 'auto' };
     const store = create(
       async (url, init) => {
         if (url.includes('/messages?'))
@@ -254,29 +262,30 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     const options = { thinking: false, max_tokens: 512 };
     await store.send('오늘 날씨', options);
     await store.send('오늘 날씨', options);
-    policy = { network_mode: 'local', web_search: 'on' };
+    policy = { network_mode: 'local', web_search: 'off' };
     await store.send('오늘 날씨', options);
     assert.deepEqual(attempts[0].body, {
       content: '오늘 날씨',
       options,
       network_mode: 'auto',
-      web_search: 'on',
+      web_search: 'auto',
     });
     assert.equal(attempts[0].key, attempts[1].key);
     assert.notEqual(attempts[1].key, attempts[2].key);
     assert.equal(attempts[2].body.network_mode, 'local');
+    assert.equal(attempts[2].body.web_search, 'off');
     await store.regenerate('assistant-1', options);
-    policy = { network_mode: 'auto', web_search: 'off' };
+    policy = { network_mode: 'auto', web_search: 'auto' };
     await store.regenerate('assistant-1', options);
     assert.deepEqual(attempts[3].body, {
       options,
       network_mode: 'local',
-      web_search: 'on',
+      web_search: 'off',
     });
     assert.deepEqual(attempts[4].body, {
       options,
       network_mode: 'auto',
-      web_search: 'off',
+      web_search: 'auto',
     });
     assert.notEqual(attempts[3].key, attempts[4].key);
     assert.equal(attempts[3].url, `/api/v1/generations/${G}/regenerate`);
@@ -975,7 +984,7 @@ describe('저장된 대화와 생성 복원', { concurrency: false }, () => {
     assert.deepEqual(attempts[0].body, {
       options,
       network_mode: 'local',
-      web_search: 'auto',
+      web_search: 'off',
     });
     const state = store.getSnapshot();
     assert.equal(

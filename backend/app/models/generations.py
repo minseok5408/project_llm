@@ -28,9 +28,34 @@ from backend.app.models.base import IdentityTimestamps
 class GenerationRun(IdentityTimestamps, Base):
     __tablename__ = "generation_runs"
     __table_args__ = (
+        CheckConstraint("jsonb_typeof(file_sources) = 'array'", name="file_sources"),
+        CheckConstraint("jsonb_typeof(progress) = 'array'", name="progress"),
+        CheckConstraint(
+            "question_card IS NULL OR jsonb_typeof(question_card) = 'object'", name="question_card"
+        ),
+        CheckConstraint("jsonb_typeof(memory_dependencies) = 'object'", name="memory_dependencies"),
         UniqueConstraint("user_id", "idempotency_key"),
         UniqueConstraint("reservation_id"),
         UniqueConstraint("assistant_message_id"),
+        UniqueConstraint("conversation_id", "id", name="uq_generation_runs_conversation_identity"),
+        ForeignKeyConstraint(
+            ["conversation_id", "user_message_id"],
+            ["messages.conversation_id", "messages.id"],
+            name="fk_generation_runs_user_message_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["conversation_id", "assistant_message_id"],
+            ["messages.conversation_id", "messages.id"],
+            name="fk_generation_runs_assistant_message_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["reservation_id", "user_id"],
+            ["token_reservations.id", "token_reservations.user_id"],
+            name="fk_generation_runs_reservation_user",
+            ondelete="RESTRICT",
+        ),
         CheckConstraint(
             "supersedes_generation_id IS NULL OR supersedes_generation_id <> id",
             name="distinct_predecessor",
@@ -46,6 +71,7 @@ class GenerationRun(IdentityTimestamps, Base):
             ["conversations.workspace_id", "conversations.id"],
             ondelete="RESTRICT",
         ),
+        CheckConstraint("jsonb_typeof(recall_sources) = 'array'", name="recall_sources"),
         CheckConstraint("request_hash ~ '^[0-9a-f]{64}$'", name="request_hash"),
         CheckConstraint(
             "status IN ('queued','running','completed','failed','cancelled','usage_pending')",
@@ -57,7 +83,6 @@ class GenerationRun(IdentityTimestamps, Base):
         CheckConstraint("network_revision >= 0", name="network_revision"),
         CheckConstraint("web_search_mode IN ('auto','on','off')", name="web_search_mode"),
         CheckConstraint("jsonb_typeof(request_messages) = 'array'", name="messages_array"),
-        CheckConstraint("jsonb_typeof(options) = 'object'", name="options_object"),
         CheckConstraint(
             "(status IN ('queued','running') AND completed_at IS NULL) OR "
             "(status IN ('completed','failed','cancelled','usage_pending') "
@@ -85,32 +110,41 @@ class GenerationRun(IdentityTimestamps, Base):
         ),
     )
 
+    progress: Mapped[list[dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    question_card: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    file_sources: Mapped[list[dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+
+    memory_dependencies: Mapped[dict[str, int]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+
     workspace_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     conversation_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     user_id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
-    user_message_id: Mapped[UUID] = mapped_column(
-        PostgresUUID(as_uuid=True), ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
-    )
-    assistant_message_id: Mapped[UUID] = mapped_column(
-        PostgresUUID(as_uuid=True), ForeignKey("messages.id", ondelete="RESTRICT"), nullable=False
-    )
+    user_message_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
+    assistant_message_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     supersedes_generation_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), ForeignKey("generation_runs.id", ondelete="RESTRICT")
     )
     is_current: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
-    reservation_id: Mapped[UUID] = mapped_column(
-        PostgresUUID(as_uuid=True),
-        ForeignKey("token_reservations.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
+    reservation_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     idempotency_key: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     request_messages: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    options: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    recall_sources: Mapped[list[dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    thinking: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     prompt_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
     max_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(

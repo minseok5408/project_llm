@@ -15,6 +15,7 @@ class SearchResult:
     title: str
     url: str
     snippet: str
+    retrieved_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

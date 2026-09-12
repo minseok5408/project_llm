@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models import TokenBudget, TokenReservation, UsagePlan, User
 from backend.app.repositories import AccessDenied, Conflict, InvalidInput, RepositoryError
-from backend.app.repositories.core import identifier, logged, required_text
+from backend.app.repositories.operations import logged
+from backend.app.repositories.validation import identifier, required_text
 
 MAX_TOKENS = 2**63 - 1
 

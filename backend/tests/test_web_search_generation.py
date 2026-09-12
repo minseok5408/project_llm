@@ -119,14 +119,18 @@ async def finish_task(task: asyncio.Task) -> None:
     await asyncio.gather(task, return_exceptions=True)
 
 
+@pytest.mark.parametrize("thinking", [False, True])
 async def test_search_completion_preserves_sources_and_charges_only_final_exact_usage(
     harness: Harness,
+    thinking: bool,
 ) -> None:
     search, model = install(harness)
     model.blocked = True
     await harness.grant(limit=10_000)
     content = "최신 Python 정보를 검색해줘"
-    request = await harness.submit(harness.member, content=content)
+    request = await harness.submit(
+        harness.member, content=content, options=GenerationOptions(thinking=thinking, max_tokens=64)
+    )
     pending = await snapshot(harness.database, request["id"])
     assert search.check_calls == 0 and search.search_calls == []
     before = await balance(harness.database, harness.member)
@@ -149,6 +153,8 @@ async def test_search_completion_preserves_sources_and_charges_only_final_exact_
 
     complete = await snapshot(harness.database, request["id"])
     messages, options = model.calls[0]
+    assert complete.run.thinking is options.thinking is thinking
+    assert complete.run.max_output_tokens == options.max_tokens
     exact_input = await model.count_input(messages, options)
     assert len(model.calls) == 1
     assert search.search_calls == [content]
@@ -167,12 +173,21 @@ async def test_search_completion_preserves_sources_and_charges_only_final_exact_
     )
 
 
-@pytest.mark.parametrize("content", ["파이썬 리스트를 설명해줘", "현재 내 이름과 직업이 뭐였지?"])
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("안녕", id="greeting"),
+        pytest.param("파이썬 리스트를 설명해줘", id="basic-concept"),
+        pytest.param("현재 내 이름과 직업이 뭐였지?", id="personal-recall"),
+        pytest.param("'고마워'를 영어로 번역해줘", id="translation"),
+        pytest.param("2 + 2는 얼마야?", id="calculation"),
+    ],
+)
 async def test_auto_without_web_need_performs_no_external_io(
     harness: Harness, content: str
 ) -> None:
     search, model = install(harness)
-    request = await harness.submit(content=content)
+    request = await harness.submit(content=content, network_mode="auto", web_search="auto")
     await harness.execute_next()
     assert (await snapshot(harness.database, request["id"])).run.status == "completed"
     assert search.check_calls == 0 and search.search_calls == []

@@ -24,6 +24,109 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
     else process.env.API_BASE_URL = originalOrigin;
   });
 
+  it('파일 업로드만 바이너리를 허용하고 원본 다운로드 헤더와 첨부 이름을 보존한다', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    const path = `/api/v1/conversations/${id}/files`;
+    globalThis.fetch = async (url, init) => {
+      assert.equal(new URL(url).hostname, '127.0.0.1');
+      if (init.method === 'POST') {
+        assert.equal(
+          init.headers.get('x-file-name'),
+          encodeURIComponent('자료.pdf'),
+        );
+        assert.equal(await new Request(url, init).text(), '%PDF-1.7');
+        return Response.json({ id }, { status: 201 });
+      }
+      return new Response('original', {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': "attachment; filename*=UTF-8''file.pdf",
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+    };
+    const result = await POST(
+      new Request(`${LAN_ORIGIN}${path}`, {
+        method: 'POST',
+        headers: {
+          Origin: LAN_ORIGIN,
+          'Content-Type': 'application/pdf',
+          'X-File-Name': encodeURIComponent('자료.pdf'),
+        },
+        body: '%PDF-1.7',
+      }),
+    );
+    assert.equal(result.status, 201);
+    const download = await GET(
+      new Request(`${LAN_ORIGIN}${path}/${id}/download`),
+    );
+    assert.equal(
+      download.headers.get('content-disposition'),
+      "attachment; filename*=UTF-8''file.pdf",
+    );
+    assert.equal(download.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(download.headers.get('cache-control'), 'no-store');
+    assert.equal(
+      (
+        await POST(
+          new Request(`${LAN_ORIGIN}${path}/${id}/retry`, {
+            method: 'POST',
+            headers: { Origin: LAN_ORIGIN, 'Content-Type': 'application/pdf' },
+            body: 'x',
+          }),
+        )
+      ).status,
+      415,
+    );
+    assert.equal(
+      (await GET(new Request(`${LAN_ORIGIN}${path}/bad/download`))).status,
+      404,
+    );
+  });
+
+  it('기억 목록·저장·수정·삭제를 허용된 경로와 JSON 본문으로만 중계한다', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    let calls = 0;
+    globalThis.fetch = async (url, init) => {
+      calls++;
+      assert.match(
+        new Request(url, init).url,
+        /^http:\/\/127\.0\.0\.1:8000\/api\/v1\/memories/,
+      );
+      if (init.method !== 'GET')
+        assert.equal(init.headers.get('x-csrf-token'), 'csrf');
+      return Response.json({ revision: calls, limit: 20, items: [] });
+    };
+    for (const { method, handler, path } of [
+      { method: 'GET', handler: GET, path: '/api/v1/memories' },
+      { method: 'POST', handler: POST, path: '/api/v1/memories' },
+      { method: 'PATCH', handler: PATCH, path: `/api/v1/memories/${id}` },
+      { method: 'DELETE', handler: DELETE, path: `/api/v1/memories/${id}` },
+    ]) {
+      const result = await handler(
+        new Request(`${LAN_ORIGIN}${path}`, {
+          method,
+          headers: {
+            Origin: LAN_ORIGIN,
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': 'csrf',
+          },
+          ...(method === 'GET'
+            ? {}
+            : { body: JSON.stringify({ revision: 0 }) }),
+        }),
+      );
+      assert.equal(result.status, 200);
+      assert.equal(result.headers.get('cache-control'), 'no-store');
+    }
+    assert.equal(calls, 4);
+    assert.equal(
+      (await GET(new Request(`${LAN_ORIGIN}/api/v1/memories/bad-id`))).status,
+      404,
+    );
+    assert.equal(calls, 4);
+  });
+
   it('LAN 요청의 쿠키와 CSRF만 전달하고 위조된 프록시 헤더를 버린다', async () => {
     let captured;
     globalThis.fetch = async (url, init) => {
@@ -243,6 +346,30 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
     assert.equal(response.headers.get('cache-control'), 'no-store');
   });
 
+  it('삭제한 답변 언어 설정 경로는 조회·변경 요청을 중계하지 않는다', async () => {
+    for (const [handler, method] of [
+      [GET, 'GET'],
+      [PATCH, 'PATCH'],
+    ]) {
+      const response = await handler(
+        new Request(`${LAN_ORIGIN}/api/v1/answer-language`, {
+          method,
+          headers: {
+            Origin: LAN_ORIGIN,
+            'Content-Type': 'application/json',
+            Cookie: 'session=private',
+            'X-CSRF-Token': 'csrf-value',
+          },
+          ...(method === 'PATCH'
+            ? { body: JSON.stringify({ answer_language: 'en', revision: 0 }) }
+            : {}),
+        }),
+      );
+      assert.equal(response.status, 404);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    }
+  });
+
   it('허용되지 않은 경로나 메서드는 upstream에 보내지 않는다', async () => {
     let called = false;
     globalThis.fetch = async () => {
@@ -254,6 +381,18 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       { handler: POST, method: 'POST', path: '/api/chat/extra', expected: 404 },
       { handler: GET, method: 'GET', path: '/api/chat', expected: 405 },
       { handler: POST, method: 'POST', path: '/api/status', expected: 405 },
+      {
+        handler: POST,
+        method: 'POST',
+        path: '/api/v1/answer-language',
+        expected: 404,
+      },
+      {
+        handler: GET,
+        method: 'GET',
+        path: '/api/v1/answer-language/other',
+        expected: 404,
+      },
       {
         handler: GET,
         method: 'GET',
@@ -405,6 +544,7 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       [GET, 'GET', `/api/v1/generations/${id}/events?after=27`],
       [POST, 'POST', `/api/v1/generations/${id}/cancel`],
       [POST, 'POST', `/api/v1/generations/${id}/regenerate`],
+      [POST, 'POST', `/api/v1/generations/${id}/respond`],
     ];
     globalThis.fetch = async (url, init) => {
       assert.equal(new Headers(init.headers).get('idempotency-key'), id);
@@ -435,6 +575,8 @@ describe('같은 origin의 로컬 API 중계', { concurrency: false }, () => {
       `/api/v1/generations/${id}%2fevents`,
       `/api/v1/generations/not-a-uuid/regenerate`,
       `/api/v1/generations/${id}/regenerate/extra`,
+      `/api/v1/generations/not-a-uuid/respond`,
+      `/api/v1/generations/${id}/respond/extra`,
     ]) {
       assert.equal(
         (await GET(new Request(`${LAN_ORIGIN}${path}`))).status,

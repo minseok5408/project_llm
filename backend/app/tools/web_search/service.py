@@ -2,29 +2,43 @@
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from time import monotonic
+from uuid import uuid4
 
 from sqlalchemy import select, update
 
 from backend.app.context.compaction import count_context
-from backend.app.models import GenerationRun, Message, TokenReservation, User, WebSearchRun
+from backend.app.llm.protocol import ProviderUnavailable, ToolChatProvider
+from backend.app.models import GenerationRun, Message, User, WebSearchRun
 from backend.app.repositories import Repository
 from backend.app.runtime.cancellation import GenerationCancelled, cancellable
+from backend.app.runtime.contracts import GenerationJob, ModelExecution
+from backend.app.runtime.steps import StepLimitExceeded, StepService
 from backend.app.schemas import ChatMessage, GenerationOptions
+from backend.app.services.network_mode import NetworkModeService
+from backend.app.tools.web_search.adapters.common import public_source_url
 from backend.app.tools.web_search.context import (
     SEARCH_CONTEXT_PROMPT,
     build_search_context,
     should_search,
 )
-from backend.app.tools.web_search.provider import SearchProviderError, SearchResponse
-
-if TYPE_CHECKING:
-    from backend.app.services.generations import GenerationService
+from backend.app.tools.web_search.planning import decide, query_entries
+from backend.app.tools.web_search.provider import (
+    SearchProviderError,
+    SearchResponse,
+    SearchResult,
+    WebSearchProvider,
+)
 
 
 class NetworkPermissionChanged(Exception):
     """요청 승인 뒤 로컬 설정이 바뀌어 외부 작업의 허용 범위가 끝났다."""
+
+
+class SearchPlanningError(Exception):
+    """검색 판단이 실패하여 기존 지식으로 답변해야 한다."""
 
 
 def search_payload(row: WebSearchRun | None) -> dict | None:
@@ -39,31 +53,45 @@ def search_payload(row: WebSearchRun | None) -> dict | None:
 
 
 class WebSearchService:
-    def __init__(self, service: "GenerationService"):
-        self.service = service
-        self.database, self.settings = service.database, service.settings
+    def __init__(
+        self,
+        execution: ModelExecution,
+        *,
+        search_provider: WebSearchProvider,
+        network_mode: NetworkModeService,
+    ):
+        self.execution = execution
+        self.database, self.settings = execution.database, execution.settings
+        self.search_provider, self.network_mode = search_provider, network_mode
 
-    async def _watch_permission(self, job: dict) -> None:
+    async def _watch_permission(self, job: GenerationJob) -> None:
         # API와 실행자가 별도 프로세스이므로 DB 설정을 짧게 확인해야 한다.
         while True:
-            if not await self.service.network_mode.is_allowed(
-                job["user_id"], job["network_revision"]
-            ):
+            await self._check_access(job)
+            if not await self.network_mode.is_allowed(job["user_id"], job["network_revision"]):
                 raise NetworkPermissionChanged
             await asyncio.sleep(0.05)
 
-    async def _guarded(self, operation, job: dict, cancellation: asyncio.Task):
+    async def _check_access(self, job: GenerationJob) -> None:
+        async with self.database.session() as session:
+            await Repository(session, job["user_id"]).get_conversation(
+                job["workspace_id"], job["conversation_id"]
+            )
+            run = await session.get(GenerationRun, job["id"])
+            if run.cancel_requested or run.status != "running":
+                raise GenerationCancelled
+
+    async def _guarded(self, operation, job: GenerationJob, cancellation: asyncio.Task):
         """이미 만든 코루틴도 허용 검사 실패 때 닫고 모든 대기 작업을 회수한다."""
         try:
             if cancellation.done():
                 cancellation.result()
                 raise GenerationCancelled
-            permitted = await self.service.network_mode.is_allowed(
-                job["user_id"], job["network_revision"]
-            )
+            permitted = await self.network_mode.is_allowed(job["user_id"], job["network_revision"])
             if cancellation.done():
                 cancellation.result()
                 raise GenerationCancelled
+            await self._check_access(job)
         except BaseException:
             operation.close()
             raise
@@ -82,9 +110,8 @@ class WebSearchService:
             if guard in done:
                 guard.result()
             result = pending.result()
-            if not await self.service.network_mode.is_allowed(
-                job["user_id"], job["network_revision"]
-            ):
+            await self._check_access(job)
+            if not await self.network_mode.is_allowed(job["user_id"], job["network_revision"]):
                 raise NetworkPermissionChanged
             return result
         finally:
@@ -93,7 +120,11 @@ class WebSearchService:
             await asyncio.gather(pending, guard, return_exceptions=True)
 
     async def _record(
-        self, job: dict, status: str, reason: str | None = None, sources: list | None = None
+        self,
+        job: GenerationJob,
+        status: str,
+        reason: str | None = None,
+        sources: list | None = None,
     ) -> dict | None:
         from backend.app.services.generations.events import add_event
 
@@ -111,7 +142,7 @@ class WebSearchService:
             if row is None:
                 row = WebSearchRun(
                     generation_id=run.id,
-                    provider=self.service.search_provider.name,
+                    provider=self.search_provider.name,
                     status=status,
                     sources=[],
                 )
@@ -131,7 +162,7 @@ class WebSearchService:
             await session.commit()
             return payload
 
-    async def _close_pending(self, job: dict, status: str, reason: str) -> None:
+    async def _close_pending(self, job: GenerationJob, status: str, reason: str) -> None:
         from backend.app.services.generations.events import add_event
 
         async with self.database.session() as session:
@@ -150,7 +181,7 @@ class WebSearchService:
                     )
                 await session.commit()
 
-    async def prepare(self, job: dict, cancellation: asyncio.Task) -> dict:
+    async def prepare(self, job: GenerationJob, cancellation: asyncio.Task) -> GenerationJob:
         try:
             return await self._prepare(job, cancellation)
         except GenerationCancelled:
@@ -165,13 +196,13 @@ class WebSearchService:
 
     async def _store_context(
         self,
-        job: dict,
+        job: GenerationJob,
         messages: list[ChatMessage],
         options: GenerationOptions,
         tokens: int,
         *,
         sources: list | None = None,
-    ) -> dict:
+    ) -> GenerationJob:
         from backend.app.services.generations.events import add_event
 
         async with self.database.session() as session:
@@ -180,7 +211,7 @@ class WebSearchService:
                 await session.scalar(
                     select(User).where(User.id == job["user_id"]).with_for_update()
                 )
-                preference = await self.service.network_mode.preference(session, job["user_id"])
+                preference = await self.network_mode.preference(session, job["user_id"])
                 if preference.local_only or preference.revision != job["network_revision"]:
                     raise NetworkPermissionChanged
             await Repository(session, job["user_id"]).get_conversation(
@@ -192,7 +223,7 @@ class WebSearchService:
             if run.status != "running" or run.cancel_requested:
                 raise GenerationCancelled
             run.request_messages = [message.model_dump() for message in messages]
-            run.options = options.model_dump()
+            run.thinking = options.thinking
             run.prompt_tokens, run.max_output_tokens = tokens, options.max_tokens
             if sources is not None:
                 row = await session.scalar(
@@ -207,17 +238,17 @@ class WebSearchService:
             return {
                 **job,
                 "messages": [message.model_dump() for message in messages],
-                "options": options.model_dump(),
+                "options": {"thinking": run.thinking, "max_tokens": run.max_output_tokens},
                 "prompt_tokens": tokens,
             }
 
-    async def _fit(self, job: dict, response: SearchResponse):
+    async def _fit(self, job: GenerationJob, response: SearchResponse):
         base = [ChatMessage.model_validate(message) for message in job["messages"]]
         options = GenerationOptions.model_validate(job["options"])
-        async with self.database.session() as session:
-            run = await session.get(GenerationRun, job["id"])
-            reservation = await session.get(TokenReservation, run.reservation_id)
-            cap = min(reservation.reserved_tokens, self.settings.llm_context_window)
+        cap = min(
+            await StepService(self.database, self.settings).remaining(job),
+            self.settings.llm_context_window,
+        )
         results = response.results[: self.settings.web_search_max_results]
         # 상위 결과부터 하나씩 줄여 자료 때문에 답변할 최소 공간이 사라지지 않게 한다.
         for amount in range(len(results), 0, -1):
@@ -233,7 +264,7 @@ class WebSearchService:
                 > self.settings.llm_max_history_chars
             ):
                 continue
-            tokens = await count_context(self.service.provider, messages, options)
+            tokens = await count_context(self.execution.provider, messages, options)
             if tokens + min(64, options.max_tokens) > cap:
                 continue
             effective = options.model_copy(
@@ -247,7 +278,11 @@ class WebSearchService:
                     "title": record["title"],
                     "url": record["url"],
                     "snippet": record["snippet"],
-                    "retrieved_at": response.checked_at.isoformat(),
+                    "retrieved_at": next(
+                        (result.retrieved_at or response.checked_at).isoformat()
+                        for result in selected
+                        if result.url == record["url"]
+                    ),
                 }
                 for record in records
             ]
@@ -255,8 +290,8 @@ class WebSearchService:
         return None
 
     async def _fallback(
-        self, job: dict, status: str, reason: str, cancellation: asyncio.Task
-    ) -> dict:
+        self, job: GenerationJob, status: str, reason: str, cancellation: asyncio.Task
+    ) -> GenerationJob:
         await self._record(job, status, reason)
         base = [ChatMessage.model_validate(message) for message in job["messages"]]
         notice = ChatMessage(
@@ -270,21 +305,122 @@ class WebSearchService:
         )
         messages = [base[0], notice, *base[1:]]
         options = GenerationOptions.model_validate(job["options"])
-        if sum(len(message.content) for message in messages) > self.settings.llm_max_history_chars:
-            return job
-        tokens = await cancellable(
-            count_context(self.service.provider, messages, options), cancellation
+        cap = min(
+            await StepService(self.database, self.settings).remaining(job),
+            self.settings.llm_context_window,
         )
-        async with self.database.session() as session:
-            run = await session.get(GenerationRun, job["id"])
-            reservation = await session.get(TokenReservation, run.reservation_id)
-            cap = min(reservation.reserved_tokens, self.settings.llm_context_window)
+        tokens = cap
+        if sum(len(message.content) for message in messages) <= self.settings.llm_max_history_chars:
+            tokens = await cancellable(
+                count_context(self.execution.provider, messages, options), cancellation
+            )
         if tokens + min(64, options.max_tokens) > cap:
-            return job
+            # 판단 호출에 사용한 양만큼 기존 답변의 허용 출력도 줄인다.
+            remaining = cap - job["prompt_tokens"]
+            if remaining < 1:
+                raise StepLimitExceeded
+            options = options.model_copy(update={"max_tokens": min(options.max_tokens, remaining)})
+            return await self._store_context(job, base, options, job["prompt_tokens"])
         options = options.model_copy(update={"max_tokens": min(options.max_tokens, cap - tokens)})
         return await self._store_context(job, messages, options, tokens)
 
-    async def _prepare(self, job: dict, cancellation: asyncio.Task) -> dict:
+    async def _search_once(
+        self, job: GenerationJob, query: str, call_id: str, cancellation: asyncio.Task
+    ) -> SearchResponse:
+        ledger = StepService(self.database, self.settings)
+        step = await ledger.start(job, kind="tool", name="web_search", call_id=call_id)
+        status, reason = "failed", "search_failed"
+        try:
+            response = await self._guarded(self.search_provider.search(query), job, cancellation)
+            # 공급자를 교체해도 크기·자료형 검증을 건너뛰지 않는다.
+            if (
+                not isinstance(response, SearchResponse)
+                or not isinstance(response.results, tuple)
+                or len(response.results) > self.settings.web_search_max_results
+                or not isinstance(response.checked_at, datetime)
+                or response.checked_at.tzinfo is None
+            ):
+                raise SearchProviderError("invalid_response")
+            for item in response.results:
+                if (
+                    not isinstance(item, SearchResult)
+                    or not all(
+                        isinstance(value, str) for value in (item.title, item.url, item.snippet)
+                    )
+                    or len(item.title) > 1000
+                    or len(item.url) > 4096
+                    or len(item.snippet) > 10000
+                    or public_source_url(item.url) is None
+                ):
+                    raise SearchProviderError("invalid_response")
+            status, reason = "completed", None
+            return response
+        except (GenerationCancelled, asyncio.CancelledError):
+            status, reason = "cancelled", "interrupted"
+            raise
+        except NetworkPermissionChanged:
+            status, reason = "cancelled", "mode_changed"
+            raise
+        except SearchProviderError as error:
+            reason = error.code
+            raise
+        finally:
+            await asyncio.shield(ledger.close(job, step, status=status, reason=reason))
+
+    async def _searches(
+        self, job: GenerationJob, content: str, cancellation: asyncio.Task
+    ) -> SearchResponse:
+        if not self.settings.web_search_agent_enabled or not isinstance(
+            self.execution.provider, ToolChatProvider
+        ):
+            return await self._search_once(
+                job, content[: self.settings.web_search_max_query_chars], str(uuid4()), cancellation
+            )
+        entries = query_entries(job, content)
+        queries: list[str] = []
+        results = {}
+        checked_at = datetime.now(UTC)
+        deadline = monotonic() + self.settings.web_search_agent_timeout_seconds
+        for _ in range(self.settings.web_search_max_attempts):
+            try:
+                async with asyncio.timeout(max(0, deadline - monotonic())):
+                    references = [
+                        {"title": item.title[:300], "snippet": item.snippet[:700]}
+                        for item in results.values()
+                    ]
+                    query, call_id = await self._guarded(
+                        decide(self.execution, job, entries, references, queries, cancellation),
+                        job,
+                        cancellation,
+                    )
+                    if query is None or " ".join(query.split()).casefold() in queries:
+                        break
+                    queries.append(" ".join(query.split()).casefold())
+                    response = await self._search_once(job, query, call_id, cancellation)
+                    checked_at = response.checked_at
+                    # 재검색의 새 근거를 우선하며 출처별 원래 조회 시각을 보존한다.
+                    combined = {
+                        item.url: replace(item, retrieved_at=response.checked_at)
+                        for item in response.results
+                    }
+                    for url, item in results.items():
+                        combined.setdefault(url, item)
+                    results = dict(list(combined.items())[: self.settings.web_search_max_results])
+            except (
+                TimeoutError,
+                StepLimitExceeded,
+                ProviderUnavailable,
+                SearchProviderError,
+            ) as error:
+                # 확인된 이전 자료는 활용하고 실패한 검색이나 잘못된 호출을 자동 반복하지 않는다.
+                if not results:
+                    if isinstance(error, ProviderUnavailable):
+                        raise SearchPlanningError from None
+                    raise
+                break
+        return SearchResponse(tuple(results.values()), checked_at)
+
+    async def _prepare(self, job: GenerationJob, cancellation: asyncio.Task) -> GenerationJob:
         async with self.database.session() as session:
             run = await session.get(GenerationRun, job["id"])
             content = (await session.get(Message, run.user_message_id)).content
@@ -299,23 +435,17 @@ class WebSearchService:
                     "forced_local" if job.get("network_mode") == "local" else "search_off",
                     cancellation,
                 )
-            if not self.service.search_provider.configured:
+            if not self.search_provider.configured:
                 return await self._fallback(
                     job, "unavailable", "provider_unconfigured", cancellation
                 )
             await self._record(job, "searching")
             status = await self._guarded(
-                self.service.network_mode.status(job["user_id"]), job, cancellation
+                self.network_mode.status(job["user_id"]), job, cancellation
             )
             if status["mode"] != "online":
                 return await self._fallback(job, "unavailable", status["reason"], cancellation)
-            response = await self._guarded(
-                self.service.search_provider.search(
-                    content[: self.settings.web_search_max_query_chars]
-                ),
-                job,
-                cancellation,
-            )
+            response = await self._searches(job, content, cancellation)
             if not response.results:
                 return await self._fallback(job, "no_results", "no_results", cancellation)
             fitted = await self._guarded(self._fit(job, response), job, cancellation)
@@ -327,6 +457,15 @@ class WebSearchService:
             return await self._fallback(job, "disabled", "mode_changed", cancellation)
         except SearchProviderError as error:
             return await self._fallback(job, "failed", error.code, cancellation)
+        except (TimeoutError, StepLimitExceeded, SearchPlanningError) as error:
+            reason = (
+                "timeout"
+                if isinstance(error, TimeoutError)
+                else "step_limit"
+                if isinstance(error, StepLimitExceeded)
+                else "planning_failed"
+            )
+            return await self._fallback(job, "failed", reason, cancellation)
 
     async def recover(self) -> None:
         async with self.database.session() as session:

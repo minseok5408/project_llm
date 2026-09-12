@@ -104,6 +104,7 @@ class TokenReservation(IdentityTimestamps, Base):
     __tablename__ = "token_reservations"
     __table_args__ = (
         UniqueConstraint("user_id", "request_key"),
+        UniqueConstraint("id", "user_id", name="uq_token_reservations_identity_user"),
         ForeignKeyConstraint(
             ["budget_id", "user_id"],
             ["token_budgets.id", "token_budgets.user_id"],

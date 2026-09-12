@@ -1,14 +1,21 @@
 'use client';
 
-import { ChevronDown, RotateCcw } from 'lucide-react';
+import { FileSources } from '../../files/components/file-sources.tsx';
+import type { FileSource } from '../../files/types.ts';
+import type { RequestFn } from '../../../lib/http.ts';
+import { RotateCcw } from 'lucide-react';
 import type { ChatMessage } from '../state/chat-store.ts';
 import { CopyButton } from '../../../components/content/copy-button.tsx';
 import { StreamingText } from './streaming-text';
 import { SearchSources } from '../../network/components/search-sources.tsx';
 import type { SearchMetadata } from '../../network/types.ts';
+import { QuestionCard } from './question-card.tsx';
+import { UserMessageText } from './user-message-text.tsx';
 
 export function ChatMessageView({
   message,
+  request,
+  fileSources,
   userName,
   streaming,
   cancelling,
@@ -20,8 +27,14 @@ export function ChatMessageView({
   canSend,
   onRegenerate,
   onContinue,
+  questionAnswers = [],
+  revealKey,
+  onQuestionAnswer = () => {},
+  onQuestionSubmit = () => {},
 }: {
   message: ChatMessage;
+  request?: RequestFn;
+  fileSources?: FileSource[];
   userName: string;
   streaming: boolean;
   cancelling: boolean;
@@ -33,6 +46,10 @@ export function ChatMessageView({
   canSend: boolean;
   onRegenerate: () => void;
   onContinue: () => void;
+  questionAnswers?: string[];
+  revealKey?: string | number;
+  onQuestionAnswer?: (index: number, value: string) => void;
+  onQuestionSubmit?: () => void;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -76,34 +93,61 @@ export function ChatMessageView({
           {statusLabel}
         </p>
       )}
-      <div
-        className={[
-          'min-w-0 break-words text-[15px] leading-7 sm:text-base',
-          isUser
-            ? 'max-w-[90%] whitespace-pre-wrap rounded-[24px] bg-muted px-5 py-3 text-foreground sm:max-w-[82%]'
-            : 'w-full text-foreground',
-          streaming && !cancelling && !reducedMotion ? 'streaming-caret' : '',
-        ].join(' ')}
-      >
-        <StreamingText
-          content={message.content}
-          active={streaming}
-          frozen={streaming && cancelling}
-          reducedMotion={reducedMotion}
-          markdown={!isUser}
-          fallback={
-            streaming
-              ? cancelling
-                ? '응답 생성을 중단하고 있습니다.'
-                : searching
-                  ? '웹에서 참고 자료를 찾는 중…'
-                  : compacting
-                    ? '이전 대화를 정리 중…'
-                    : '응답을 준비하는 중...'
-              : '저장된 응답이 없습니다.'
-          }
+      {!message.question_card && (
+        <div
+          className={[
+            'min-w-0 break-words text-[15px] leading-7 sm:text-base',
+            isUser
+              ? 'max-w-[90%] whitespace-pre-wrap rounded-[24px] bg-muted px-5 py-3 text-foreground sm:max-w-[82%]'
+              : 'w-full text-foreground',
+            streaming && !cancelling && !reducedMotion ? 'streaming-caret' : '',
+          ].join(' ')}
+        >
+          {isUser ? (
+            <UserMessageText
+              key={message.id}
+              content={message.content}
+              revealKey={revealKey}
+            />
+          ) : (
+            <StreamingText
+              content={message.content}
+              active={streaming}
+              frozen={streaming && cancelling}
+              reducedMotion={reducedMotion}
+              markdown={!isUser}
+              fallback={
+                streaming
+                  ? cancelling
+                    ? '응답 생성을 중단하고 있습니다.'
+                    : searching
+                      ? '웹에서 참고 자료를 찾는 중…'
+                      : compacting
+                        ? '이전 대화를 정리 중…'
+                        : '응답을 준비하는 중...'
+                  : '저장된 응답이 없습니다.'
+              }
+            />
+          )}
+        </div>
+      )}
+      {isAssistant && message.question_card && (
+        <QuestionCard
+          card={message.question_card}
+          answers={questionAnswers}
+          available={Boolean(message.can_respond) && !previous}
+          canSend={canSend}
+          onChange={onQuestionAnswer}
+          onSubmit={onQuestionSubmit}
         />
-      </div>
+      )}
+      {isAssistant && (
+        <FileSources
+          sources={fileSources ?? message.file_sources}
+          conversationId={message.conversation_id}
+          request={request}
+        />
+      )}
       {isAssistant && <SearchSources search={search ?? message.search} />}
       {!streaming && isAssistant && lengthLimited && (
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs leading-5 text-muted-foreground">
@@ -148,18 +192,5 @@ export function ChatMessageView({
       )}
     </div>
   );
-  return previous ? (
-    <details className="group/version rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 transition-colors open:bg-transparent">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-        <ChevronDown
-          className="size-3.5 transition-transform group-open/version:rotate-180"
-          aria-hidden="true"
-        />
-        이전 답변{statusLabel ? ` · ${statusLabel}` : ''}
-      </summary>
-      <div className="mt-4">{body}</div>
-    </details>
-  ) : (
-    body
-  );
+  return body;
 }

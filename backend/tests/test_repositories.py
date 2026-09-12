@@ -16,6 +16,7 @@ from backend.app.repositories import (
     Repository,
     create_user_with_workspace,
 )
+from backend.app.services.conversations import ConversationService
 from backend.tests.conftest import IsolatedPostgres, database_settings
 
 pytestmark = [pytest.mark.postgres, pytest.mark.asyncio]
@@ -71,11 +72,10 @@ async def test_user_workspace_and_owner_membership_are_atomic(schema_database: D
 
 
 async def test_conversation_and_message_round_trip(schema_database: Database, account) -> None:
-    settings = {"temperature": 0.3, "thinking": True, "labels": ["한글", "보존"]}
     async with schema_database.session() as session:
         repository = Repository(session, account.user.id)
         conversation = await repository.create_conversation(
-            account.workspace.id, title="한글 대화 제목", model="test-model", settings=settings
+            account.workspace.id, title="한글 대화 제목", model="test-model"
         )
         first = await repository.append_message(
             account.workspace.id, conversation.id, role="user", content="한글 질문"
@@ -86,7 +86,6 @@ async def test_conversation_and_message_round_trip(schema_database: Database, ac
             role="assistant",
             content="한글 응답 🌿",
             model="test-model",
-            prompt_version="v1",
             token_count=12,
         )
         await session.commit()
@@ -99,7 +98,6 @@ async def test_conversation_and_message_round_trip(schema_database: Database, ac
         loaded = await repository.get_conversation(account.workspace.id, conversation.id)
         assert loaded.title == "한글 대화 제목"
         assert loaded.model == "test-model"
-        assert loaded.settings == settings
         assert loaded.created_by == account.user.id
         assert loaded.last_message_at >= loaded.created_at
         assert loaded.next_message_sequence == 3
@@ -110,7 +108,6 @@ async def test_conversation_and_message_round_trip(schema_database: Database, ac
         assert page.items[0].created_by == account.user.id
         assert page.items[1].created_by is None
         assert page.items[1].model == "test-model"
-        assert page.items[1].prompt_version == "v1"
         assert page.items[1].token_count == 12
         assert page.items[1].created_at.utcoffset() == timedelta(0)
         assert page.next_cursor is None
@@ -129,8 +126,6 @@ async def test_invalid_input_does_not_abort_or_mutate_transaction(
             {"title": " "},
             {"model": ""},
             {"model": None},
-            {"settings": []},
-            {"settings": {"temperature": float("nan")}},
         ]:
             with pytest.raises(InvalidInput):
                 await repository.create_conversation(
@@ -147,7 +142,6 @@ async def test_invalid_input_does_not_abort_or_mutate_transaction(
             {"token_count": -1},
             {"token_count": True},
             {"model": " "},
-            {"prompt_version": " "},
         ]:
             with pytest.raises(InvalidInput):
                 await repository.append_message(
@@ -189,7 +183,7 @@ async def test_cross_workspace_reads_and_writes_are_denied(
                 account.workspace.id, other_conversation.id, role="user", content="침범"
             ),
             lambda: repository.list_messages(account.workspace.id, other_conversation.id),
-            lambda: repository.soft_delete_conversation(
+            lambda: ConversationService(session, repository.actor_id).soft_delete_conversation(
                 account.workspace.id, other_conversation.id
             ),
         ]
@@ -224,7 +218,9 @@ async def test_member_can_participate_but_only_admin_can_delete_another_users_co
         )
         assert message.created_by == participant.user.id
         with pytest.raises(AccessDenied):
-            await repository.soft_delete_conversation(account.workspace.id, conversation.id)
+            await ConversationService(session, repository.actor_id).soft_delete_conversation(
+                account.workspace.id, conversation.id
+            )
         await session.commit()
     async with schema_database.engine.begin() as connection:
         await connection.execute(
@@ -236,7 +232,7 @@ async def test_member_can_participate_but_only_admin_can_delete_another_users_co
             .values(role="admin")
         )
     async with schema_database.session() as session:
-        await Repository(session, participant.user.id).soft_delete_conversation(
+        await ConversationService(session, participant.user.id).soft_delete_conversation(
             account.workspace.id, conversation.id
         )
         await session.commit()
@@ -283,7 +279,9 @@ async def test_inactive_or_missing_membership_denies_access(
                 account.workspace.id, conversation.id, role="user", content="접근 금지"
             ),
             lambda: repository.list_messages(account.workspace.id, conversation.id),
-            lambda: repository.soft_delete_conversation(account.workspace.id, conversation.id),
+            lambda: ConversationService(session, repository.actor_id).soft_delete_conversation(
+                account.workspace.id, conversation.id
+            ),
         ]:
             with pytest.raises(AccessDenied):
                 await attempt()
@@ -359,7 +357,9 @@ async def test_conversation_search_matches_title_and_body_with_status_and_access
                 account.workspace.id, conversation.id, role="assistant", content="recipe 본문"
             )
         await repository.update_conversation(account.workspace.id, body_match.id, status="archived")
-        await repository.soft_delete_conversation(account.workspace.id, deleted.id)
+        await ConversationService(session, repository.actor_id).soft_delete_conversation(
+            account.workspace.id, deleted.id
+        )
         await Repository(session, outsider.user.id).create_conversation(
             outsider.workspace.id, title="외부 Recipe", model="test-model"
         )
@@ -511,7 +511,7 @@ async def test_soft_delete_hides_conversation_but_preserves_messages(
         )
         await session.commit()
     async with schema_database.session() as session:
-        await Repository(session, account.user.id).soft_delete_conversation(
+        await ConversationService(session, account.user.id).soft_delete_conversation(
             account.workspace.id, conversation.id
         )
         await session.commit()

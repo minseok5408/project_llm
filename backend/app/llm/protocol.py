@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from backend.app.schemas import ChatMessage, GenerationOptions, ProviderStatus
 
@@ -17,6 +17,15 @@ class ProviderUnavailable(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class ToolCall:
+    """공급자가 반환한 호출 ID와 함수 이름·직렬화 인자를 보관한다."""
+
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderDelta:
     text: str = ""
     input_tokens: int | None = None
@@ -24,6 +33,7 @@ class ProviderDelta:
     final: bool = False
     received_output_tokens: int | None = None
     finish_reason: str | None = None
+    tool_calls: tuple[ToolCall, ...] = ()
 
 
 class ChatProvider(Protocol):
@@ -39,4 +49,17 @@ class ChatProvider(Protocol):
         self,
         messages: Sequence[ChatMessage],
         options: GenerationOptions,
+    ) -> AsyncIterator[ProviderDelta]: ...
+
+
+@runtime_checkable
+class ToolChatProvider(ChatProvider, Protocol):
+    """동일한 도구 템플릿으로 입력 측정과 네이티브 호출 스트림을 제공한다."""
+
+    async def count_tools(
+        self, messages: Sequence[ChatMessage], options: GenerationOptions, tools: list[dict]
+    ) -> int: ...
+
+    def stream_tools(
+        self, messages: Sequence[ChatMessage], options: GenerationOptions, tools: list[dict]
     ) -> AsyncIterator[ProviderDelta]: ...

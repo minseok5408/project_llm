@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import UUID
 
+from asyncpg import PostgresError
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
@@ -14,6 +15,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.auth import CurrentAuth, WriteAuth, require_json
+from backend.app.context.dependencies import dependencies_current, memory_versions
 from backend.app.context.status import context_status
 from backend.app.db import Database
 from backend.app.models import Conversation, GenerationEvent, GenerationRun, Message, WebSearchRun
@@ -24,6 +26,7 @@ from backend.app.repositories import (
     Repository,
     RepositoryUnavailable,
 )
+from backend.app.services.conversations import ConversationService
 from backend.app.tools.web_search.service import search_payload
 
 router = APIRouter(prefix="/api/v1", tags=["conversations"])
@@ -71,16 +74,26 @@ class ConversationQuery(BaseModel):
 class MessageQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     before: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    after: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    around: UUID | None = None
     limit: int = Field(default=50, ge=1, le=100)
 
+    @model_validator(mode="after")
+    def single_direction(self):
+        if sum(value is not None for value in (self.before, self.after, self.around)) > 1:
+            raise ValueError("메시지 조회 방향은 하나만 지정해야 합니다.")
+        return self
 
-async def read_json_payload[T: BaseModel](request: Request, model: type[T]) -> T:
+
+async def read_json_payload[T: BaseModel](
+    request: Request, model: type[T], *, max_bytes: int = 16384
+) -> T:
     """크기를 제한하고 검증 오류에 요청 원문이나 필드 값을 포함하지 않는다."""
     require_json(request)
     data = bytearray()
     async for chunk in request.stream():
         data.extend(chunk)
-        if len(data) > 16384:
+        if len(data) > max_bytes:
             raise HTTPException(status_code=413, detail="요청 본문이 너무 큽니다.")
     try:
         return model.model_validate_json(bytes(data))
@@ -129,7 +142,7 @@ async def data_session(request: Request) -> AsyncIterator[AsyncSession]:
         raise HTTPException(
             status_code=409, detail="현재 상태에서 작업을 완료할 수 없습니다."
         ) from None
-    except (RepositoryUnavailable, SQLAlchemyError):
+    except (RepositoryUnavailable, SQLAlchemyError, PostgresError, OSError, TimeoutError):
         raise HTTPException(status_code=503, detail="데이터 저장소를 사용할 수 없습니다.") from None
 
 
@@ -177,9 +190,22 @@ async def list_conversations(request: Request, auth: CurrentAuth) -> JSONRespons
         repository = Repository(session, auth.user.id)
         page = await repository.list_conversations(**query.model_dump())
         active = await repository.active_generation_ids([item.id for item in page.items])
+        matches = (
+            await repository.conversations.search_matches(
+                query.workspace_id, [item.id for item in page.items], query.q
+            )
+            if query.q
+            else {}
+        )
         return private_json(
             {
-                "items": [conversation_payload(item, active.get(item.id)) for item in page.items],
+                "items": [
+                    {
+                        **conversation_payload(item, active.get(item.id)),
+                        **({"search_match": matches.get(item.id)} if query.q else {}),
+                    }
+                    for item in page.items
+                ],
                 "next_cursor": page.next_cursor,
             }
         )
@@ -237,7 +263,13 @@ async def delete_conversation(conversation_id: str, request: Request, auth: Writ
     async with data_session(request) as session:
         repository = Repository(session, auth.user.id)
         conversation = await repository.get_conversation_by_id(parse_id(conversation_id))
-        await repository.soft_delete_conversation(conversation.workspace_id, conversation.id)
+        await ConversationService(session, repository.actor_id).soft_delete_conversation(
+            conversation.workspace_id, conversation.id
+        )
+        await session.commit()
+        from backend.app.files.service import cleanup_deleted_files
+
+        await cleanup_deleted_files(session, request.app.state.settings)
         await session.commit()
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
@@ -290,9 +322,13 @@ async def list_messages(conversation_id: str, request: Request, auth: CurrentAut
             reasons.setdefault(
                 event.generation_id, reason if reason in ("stop", "length") else None
             )
+        versions = await memory_versions(
+            session, {key: value for run in runs for key, value in run.memory_dependencies.items()}
+        )
         metadata = {
             run.assistant_message_id: {
                 "generation_id": run.id,
+                "user_message_id": run.user_message_id,
                 "generation_status": run.status,
                 "is_current": run.is_current,
                 "can_regenerate": run.is_current
@@ -303,6 +339,21 @@ async def list_messages(conversation_id: str, request: Request, auth: CurrentAut
                 and not active.get(conversation.id),
                 "finish_reason": reasons.get(run.id),
                 "search": searches.get(run.id),
+                "file_sources": [
+                    {**source, "available": f"document:{source['document_id']}" in versions}
+                    for source in run.file_sources
+                ],
+                "progress": run.progress,
+                "question_card": run.question_card,
+                "can_respond": bool(run.question_card)
+                and not run.question_card.get("response_generation_id")
+                and run.is_current
+                and run.user_id == auth.user.id
+                and run.user_message_id == latest_user_id
+                and run.status == "completed"
+                and dependencies_current(run.memory_dependencies, versions)
+                and conversation.status == "active"
+                and not active.get(conversation.id),
             }
             for run in runs
         }
@@ -320,6 +371,7 @@ async def list_messages(conversation_id: str, request: Request, auth: CurrentAut
                 ],
                 "next_cursor": page.next_cursor,
                 "active_generation_id": active.get(conversation.id),
+                "newer_cursor": page.newer_cursor,
                 "context": await context_status(session, latest_run) if latest_run else None,
             }
         )

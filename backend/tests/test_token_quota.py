@@ -175,6 +175,12 @@ async def test_upgrade_preserves_existing_users_and_grants_no_system_role(
             ]
             if table == "users":
                 assert [row.pop("platform_role") for row in actual] == ["member", "member"]
+                assert [row.pop("memory_revision") for row in actual] == [0, 0]
+            # 미사용 기본 필드만 제거하고 나머지 기존 값·식별자·시각은 모두 비교한다.
+            if table == "conversations":
+                assert [row.pop("settings") for row in expected] == [{}]
+            if table == "messages":
+                assert [row.pop("prompt_version") for row in expected] == [None]
             assert actual == expected
         assert await session.scalar(select(func.count()).select_from(TokenBudget)) == 0
     await run_alembic(postgres, "check")
@@ -1074,7 +1080,7 @@ async def test_downgrade_blocks_pending_deferred_then_preserves_completed_usage(
     request = await begin_deferred(schema_database, actors.member, "migration", 60)
     await schema_database.dispose()
     await run_alembic(postgres, "downgrade", "0007_cancellation_usage", success=False)
-    assert await version_rows(schema_database) == ["0012_network_search"]
+    assert await version_rows(schema_database) == ["0017_schema_roles"]
     async with schema_database.session() as session:
         await TokenQuotaService(session, actors.member).settle(
             request_key="migration", input_tokens=10, output_tokens=5, usage_basis="received"

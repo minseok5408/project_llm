@@ -53,7 +53,7 @@ async def test_network_downgrade_preserves_recorded_answer_sources(harness, post
         await session.commit()
     await harness.database.dispose()
     await run_alembic(postgres, "downgrade", "0011_answer_versions", success=False)
-    assert await version_rows(harness.database) == ["0012_network_search"]
+    assert await version_rows(harness.database) == ["0017_schema_roles"]
     async with harness.database.session() as session:
         row = await session.scalar(
             select(WebSearchRun).where(WebSearchRun.generation_id == generation_id)

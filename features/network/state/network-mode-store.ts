@@ -1,10 +1,10 @@
-import { responseError } from '../../auth/state/auth-session.ts';
+import { responseError } from '../../../lib/http.ts';
+import type { RequestFn } from '../../../lib/http.ts';
 import type { SearchMetadata } from '../types.ts';
 
-export type WebSearchMode = 'auto' | 'on' | 'off';
 export type GenerationNetworkPolicy = {
   network_mode: 'auto' | 'local';
-  web_search: WebSearchMode;
+  web_search: 'auto' | 'on' | 'off';
 };
 export type NetworkMode = {
   local_only: boolean;
@@ -19,20 +19,14 @@ export type NetworkModeState = {
   loading: boolean;
   saving: boolean;
   checking: boolean;
-  webSearch: WebSearchMode;
   error: string | null;
 };
-type RequestFn = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
 
 const INITIAL_STATE: NetworkModeState = {
   value: null,
   loading: true,
   saving: false,
   checking: false,
-  webSearch: 'auto',
   error: null,
 };
 
@@ -139,7 +133,7 @@ export class NetworkModeStore {
     const operation = this.begin();
     this.publish({ checking: true, error: null });
     try {
-      // 로컬 전용이거나 설정을 모르면 강제 검사 대신 서버에 저장된 정책으로 조회한다.
+      // 데이터 사용을 껐거나 설정을 모르면 외부 검사 없이 저장된 정책만 조회한다.
       const path =
         !this.state.value || this.state.value.local_only
           ? '/api/v1/network-mode'
@@ -153,7 +147,7 @@ export class NetworkModeStore {
     }
   };
 
-  setLocalOnly = async (localOnly: boolean) => {
+  setDataUsage = async (enabled: boolean) => {
     // 설정 쓰기는 동시에 보내지 않아 늦은 응답이 사용자의 최신 선택을 덮지 않는다.
     if (
       this.state.saving ||
@@ -167,7 +161,7 @@ export class NetworkModeStore {
       const value = await this.read(
         '/api/v1/network-mode',
         operation.signal,
-        localOnly,
+        !enabled,
       );
       if (operation.version === this.version) this.publish({ value });
     } catch (error) {
@@ -176,8 +170,6 @@ export class NetworkModeStore {
       if (operation.version === this.version) this.publish({ saving: false });
     }
   };
-
-  setWebSearch = (webSearch: WebSearchMode) => this.publish({ webSearch });
 
   observeSearch = (search?: SearchMetadata | null) => {
     const value = this.state.value;
@@ -221,20 +213,22 @@ export class NetworkModeStore {
     }
   };
 
-  generationPolicy = (): GenerationNetworkPolicy => ({
+  generationPolicy = (): GenerationNetworkPolicy => {
     // 설정이 확인되지 않았거나 변경 중이면 외부로 질문이 전달되지 않게 한다.
-    network_mode:
-      !this.state.value ||
-      this.state.value.local_only ||
-      this.state.loading ||
-      this.state.saving ||
-      this.state.checking ||
-      this.state.error ||
-      this.controller.signal.aborted
-        ? 'local'
-        : 'auto',
-    web_search: this.state.webSearch,
-  });
+    const enabled = Boolean(
+      this.state.value &&
+      !this.state.value.local_only &&
+      !this.state.loading &&
+      !this.state.saving &&
+      !this.state.checking &&
+      !this.state.error &&
+      !this.controller.signal.aborted,
+    );
+    // 데이터 사용 ON은 웹검색을 허용하고, 질문에 검색이 필요한지는 서버에서 판단한다.
+    return enabled
+      ? { network_mode: 'auto', web_search: 'auto' }
+      : { network_mode: 'local', web_search: 'off' };
+  };
 
   dispose = () => {
     ++this.version;

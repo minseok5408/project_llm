@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -41,6 +42,23 @@ class Settings(BaseSettings):
     web_search_max_context_chars: int = Field(default=12000, ge=500, le=30000)
     web_search_check_cache_seconds: float = Field(default=30, ge=0, le=300)
     web_search_check_timeout_seconds: float = Field(default=2, ge=0.1, le=5)
+    # 실제 모델의 도구 호출 검증을 마친 환경에서만 문맥 검색 반복을 활성화한다.
+    context_recall_enabled: bool = True
+    context_recall_max_results: int = Field(default=3, ge=1, le=5)
+    context_recall_max_chars: int = Field(default=3600, ge=600, le=6000)
+    memory_context_max_chars: int = Field(default=4000, ge=500, le=8000)
+    file_rag_enabled: bool = True
+    file_storage_path: Path = Path("data/documents")
+    file_embedding_path: Path = Path("models/multilingual-e5-small")
+    # 구조 검사는 항상 실행하며 ClamAV를 지정하면 검사 실패도 업로드 처리 실패로 닫는다.
+    file_clamav_path: Path | None = None
+
+    web_search_agent_enabled: bool = True
+    web_search_max_attempts: int = Field(default=2, ge=1, le=3)
+    web_search_agent_timeout_seconds: float = Field(default=90, ge=5, le=180)
+    web_search_planning_max_tokens: int = Field(default=256, ge=64, le=512)
+    generation_max_steps: int = Field(default=8, ge=3, le=12)
+    generation_questions_enabled: bool = True
     database_enabled: bool = False
     database_url: SecretStr | None = None
     migration_database_url: SecretStr | None = None

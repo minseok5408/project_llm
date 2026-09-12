@@ -1,0 +1,60 @@
+.markdown-code-block {
+  --code-keyword: #8250df;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-title: #953800;
+  --code-comment: #57606a;
+  --code-tag: #116329;
+  --code-meta: #6e4c00;
+}
+
+.dark .markdown-code-block {
+  --code-keyword: #d2a8ff;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-title: #ffa657;
+  --code-comment: #9da7b1;
+  --code-tag: #7ee787;
+  --code-meta: #e3b341;
+}
+
+.chat-markdown .markdown-code-block pre[data-wrap='true'] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown-code-block :is(.hljs-keyword, .hljs-selector-tag, .hljs-type) {
+  color: var(--code-keyword);
+}
+.markdown-code-block
+  :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet) {
+  color: var(--code-string);
+}
+.markdown-code-block
+  :is(.hljs-number, .hljs-literal, .hljs-attr, .hljs-variable) {
+  color: var(--code-number);
+}
+.markdown-code-block :is(.hljs-title, .hljs-built_in, .hljs-section) {
+  color: var(--code-title);
+}
+.markdown-code-block :is(.hljs-comment, .hljs-quote) {
+  color: var(--code-comment);
+}
+.markdown-code-block :is(.hljs-name, .hljs-tag, .hljs-addition) {
+  color: var(--code-tag);
+}
+.markdown-code-block :is(.hljs-meta, .hljs-selector-class, .hljs-selector-id) {
+  color: var(--code-meta);
+}
+.markdown-code-block .hljs-deletion {
+  color: #cf222e;
+}
+.dark .markdown-code-block .hljs-deletion {
+  color: #ff7b72;
+}
+.markdown-code-block .hljs-emphasis {
+  font-style: italic;
+}
+.markdown-code-block .hljs-strong {
+  font-weight: 700;
+}

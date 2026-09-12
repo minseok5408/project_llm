@@ -1,0 +1,139 @@
+{
+  "model": "mlx-community/Qwen3.8-27B-4bit",
+  "scope": "입력 언어·요청별 번역을 확인하는 합성 표본이며 전체 언어 품질을 보장하지 않는다.",
+  "policy_sha256": "ecc86efc77187000f65a3ebfbece638329e60669af3bfdb7b34b2232fb630c9e",
+  "results": [
+    {
+      "case": "ko_mixed_history",
+      "expected_language": "ko",
+      "thinking": false,
+      "question": "개발자 커리어 상담의 첫 단계를 한 문장으로 알려줘.",
+      "answer": "개발자 커리어 상담의 첫 단계는 본인의 현재 기술 스택, 경험 수준, 그리고 원하는 목표 직무를 명확히 정의하는 것입니다.",
+      "question_card": null,
+      "input_tokens": 561,
+      "output_tokens": 31,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "en_input",
+      "expected_language": "en",
+      "thinking": false,
+      "question": "What is the first step in developer career counseling? Answer in one sentence.",
+      "answer": "The first step in developer career counseling is to conduct a comprehensive assessment of the individual's current technical skills, interests, and long-term professional goals.",
+      "question_card": null,
+      "input_tokens": 528,
+      "output_tokens": 30,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "ko_to_en_translation",
+      "expected_language": "en",
+      "thinking": false,
+      "question": "저는 개발자입니다. 영어로만 번역해줘.",
+      "answer": "I am a developer.",
+      "question_card": null,
+      "input_tokens": 526,
+      "output_tokens": 6,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "ko_after_english_translation",
+      "expected_language": "ko",
+      "thinking": false,
+      "question": "커리어 상담을 왜 받아야 하는지 한 문장으로 설명해줘.",
+      "answer": "커리어 상담은 자신의 강점과 목표를 명확히 하고, 효율적인 진로 전략을 수립하여 경력 성장의 방향성을 잃지 않도록 돕기 위해 필요합니다.",
+      "question_card": null,
+      "input_tokens": 613,
+      "output_tokens": 35,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "en_to_ko_translation",
+      "expected_language": "ko",
+      "thinking": false,
+      "question": "I am a developer. 한국어로 번역해줘.",
+      "answer": "저는 개발자입니다.",
+      "question_card": null,
+      "input_tokens": 524,
+      "output_tokens": 7,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "en_after_korean_translation",
+      "expected_language": "en",
+      "thinking": false,
+      "question": "Why is career counseling useful? Answer in one sentence.",
+      "answer": "Career counseling is useful because it helps individuals clarify their interests, skills, and values to make informed decisions about their professional paths.",
+      "question_card": null,
+      "input_tokens": 603,
+      "output_tokens": 26,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "en_continue_button",
+      "expected_language": "en",
+      "thinking": false,
+      "question": "직전 답변이 길이 제한으로 끊겼습니다. 직전 답변의 언어를 그대로 유지하고, 앞의 내용을 반복하지 말고 중단된 부분부터 이어서 완성해 주세요.",
+      "answer": "provides personalized guidance to help you make informed decisions about your professional path.\n3. It equips you with the skills and resources needed to navigate career changes or advancements effectively.",
+      "question_card": null,
+      "input_tokens": 613,
+      "output_tokens": 37,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "ko_code",
+      "expected_language": "ko",
+      "thinking": false,
+      "question": "다음 Python 코드를 그대로 한 번 인용하고 한 문장으로 설명해줘: print(\"你好\")",
+      "answer": "```python\nprint(\"你好\")\n```\n이 코드는 콘솔에 \"你好\"라는 문자열을 출력합니다.",
+      "question_card": null,
+      "input_tokens": 533,
+      "output_tokens": 27,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "ko_chinese_quote",
+      "expected_language": "ko",
+      "thinking": false,
+      "question": "职业规划를 한국어로 번역하고 원문도 한 번 인용해줘.",
+      "answer": "직업 계획\n\n원문: 职业规划",
+      "question_card": null,
+      "input_tokens": 528,
+      "output_tokens": 10,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "ko_thinking",
+      "expected_language": "ko",
+      "thinking": true,
+      "question": "개발자 커리어 상담의 첫 단계를 한 문장으로 알려줘.",
+      "answer": "\n\n개발자 커리어 상담의 첫 단계는 본인의 현재 기술 수준, 관심 분야, 그리고 원하는 커리어 방향을 명확히 파악하는 자기 진단을 하는 것입니다.",
+      "question_card": null,
+      "input_tokens": 595,
+      "output_tokens": 237,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "en_thinking",
+      "expected_language": "en",
+      "thinking": true,
+      "question": "What is the first step in developer career counseling? Answer in one sentence.",
+      "answer": "\n\nThe first step in developer career counseling is a self-assessment of your current technical skills, interests, strengths, and long-term goals to establish a clear baseline before exploring potential career paths.",
+      "question_card": null,
+      "input_tokens": 649,
+      "output_tokens": 311,
+      "finish_reason": "stop"
+    },
+    {
+      "case": "en_question_card",
+      "expected_language": "en",
+      "thinking": false,
+      "question": "Help me modify my document. Use ask_user_question to ask which changes I need first.",
+      "answer": "I'd be happy to help you modify your document! Could you please share the document text or paste it here? Also, let me know what kind of changes you're looking for.",
+      "question_card": null,
+      "input_tokens": 1028,
+      "output_tokens": 38,
+      "finish_reason": "stop"
+    }
+  ]
+}

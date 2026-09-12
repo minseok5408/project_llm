@@ -21,7 +21,8 @@ from backend.app.repositories import (
     InvalidInput,
     create_user_with_workspace,
 )
-from backend.app.repositories.core import logged, required_text
+from backend.app.repositories.operations import logged
+from backend.app.repositories.validation import required_text
 from backend.app.services.monthly_allowance import MonthlyAllowanceService
 
 SESSION_DURATION_SECONDS = 86_400

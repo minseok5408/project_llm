@@ -11,6 +11,7 @@ const API_METHODS: Readonly<Record<string, readonly string[]>> = {
   '/api/v1/workspaces': ['GET'],
   '/api/v1/conversations': ['GET', 'POST'],
   '/api/v1/usage': ['GET'],
+  '/api/v1/memories': ['GET', 'POST'],
   '/api/v1/generations/active': ['GET'],
   '/api/v1/network-mode': ['GET', 'PATCH'],
   '/api/v1/network-mode/check': ['POST'],
@@ -18,13 +19,27 @@ const API_METHODS: Readonly<Record<string, readonly string[]>> = {
 const UUID =
   '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const CONVERSATION = new RegExp(`^/api/v1/conversations/${UUID}$`);
+const FILES = new RegExp(`^/api/v1/conversations/${UUID}/files$`);
+const FILE = new RegExp(`^/api/v1/conversations/${UUID}/files/${UUID}$`);
+const FILE_READ = new RegExp(
+  `^/api/v1/conversations/${UUID}/files/${UUID}/(?:download|chunks/${UUID})$`,
+);
+const FILE_RETRY = new RegExp(
+  `^/api/v1/conversations/${UUID}/files/${UUID}/retry$`,
+);
+const MEMORY = new RegExp(`^/api/v1/memories/${UUID}$`);
 const MESSAGES = new RegExp(`^/api/v1/conversations/${UUID}/messages$`);
 const GENERATION = new RegExp(`^/api/v1/generations/${UUID}(?:/events)?$`);
 const GENERATION_ACTION = new RegExp(
-  `^/api/v1/generations/${UUID}/(?:cancel|regenerate)$`,
+  `^/api/v1/generations/${UUID}/(?:cancel|regenerate|respond)$`,
 );
 
 function allowedMethods(path: string): readonly string[] | undefined {
+  if (FILES.test(path)) return ['GET', 'POST'];
+  if (FILE.test(path)) return ['DELETE'];
+  if (FILE_READ.test(path)) return ['GET'];
+  if (FILE_RETRY.test(path)) return ['POST'];
+  if (MEMORY.test(path)) return ['PATCH', 'DELETE'];
   if (CONVERSATION.test(path)) return ['GET', 'PATCH', 'DELETE'];
   if (MESSAGES.test(path)) return ['GET', 'POST'];
   if (GENERATION.test(path)) return ['GET'];
@@ -39,8 +54,15 @@ const REQUEST_HEADERS = [
   'x-csrf-token',
   'idempotency-key',
   'last-event-id',
+  'x-file-name',
 ];
-const RESPONSE_HEADERS = ['content-type', 'retry-after', 'x-accel-buffering'];
+const RESPONSE_HEADERS = [
+  'content-type',
+  'retry-after',
+  'x-accel-buffering',
+  'content-disposition',
+  'x-content-type-options',
+];
 
 function apiOrigin() {
   const target = new URL(
@@ -88,6 +110,24 @@ async function proxy(request: Request): Promise<Response> {
   }
   if (
     isWrite &&
+    !(
+      method === 'POST' &&
+      FILES.test(incoming.pathname) &&
+      [
+        'application/octet-stream',
+        'application/pdf',
+        'text/plain',
+        'text/markdown',
+        'text/csv',
+        'application/vnd.ms-excel',
+      ].includes(
+        request.headers
+          .get('content-type')
+          ?.split(';')[0]
+          .trim()
+          .toLowerCase() ?? '',
+      )
+    ) &&
     request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !==
       'application/json'
   ) {
@@ -114,6 +154,9 @@ async function proxy(request: Request): Promise<Response> {
       headers,
       cache: 'no-store',
       redirect: 'error',
+      // 인증 쿠키는 위에서 명시적으로 전달한다. Node의 자동 인증 재시도는
+      // 스트림 본문의 401을 연결 오류로 바꿀 수 있으므로 사용하지 않는다.
+      credentials: 'omit',
       signal: request.signal,
     };
     if (isWrite) {

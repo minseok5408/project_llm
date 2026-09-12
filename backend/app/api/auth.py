@@ -13,6 +13,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
 
+from asyncpg import PostgresError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
@@ -185,7 +186,7 @@ async def auth_service(request: Request) -> AsyncIterator[tuple[AuthService, Asy
         raise HTTPException(status_code=409, detail="가입 요청을 완료할 수 없습니다.") from None
     except AccessDenied:
         raise HTTPException(status_code=403, detail="인증 요청을 처리할 수 없습니다.") from None
-    except (SQLAlchemyError, RepositoryUnavailable):
+    except (SQLAlchemyError, RepositoryUnavailable, PostgresError, OSError, TimeoutError):
         raise HTTPException(status_code=503, detail="인증 서비스를 사용할 수 없습니다.") from None
 
 

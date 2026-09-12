@@ -57,7 +57,7 @@ async def test_alembic_round_trip_and_schema_drift_detection(
 ) -> None:
     config = Config(str(PROJECT_ROOT / "alembic.ini"))
     heads = ScriptDirectory.from_config(config).get_heads()
-    assert heads == ["0012_network_search"]
+    assert heads == ["0017_schema_roles"]
 
     await run_alembic(postgres, "upgrade", "0001_database_baseline")
     assert await version_rows(database) == ["0001_database_baseline"]

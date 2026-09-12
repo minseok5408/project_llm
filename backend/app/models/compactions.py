@@ -5,7 +5,6 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
-    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -13,6 +12,7 @@ from sqlalchemy import (
     Text,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,9 +25,16 @@ class ConversationCompaction(IdentityTimestamps, Base):
 
     __tablename__ = "conversation_compactions"
     __table_args__ = (
+        CheckConstraint("jsonb_typeof(memory_dependencies) = 'object'", name="memory_dependencies"),
         ForeignKeyConstraint(
             ["workspace_id", "conversation_id"],
             ["conversations.workspace_id", "conversations.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["conversation_id", "generation_id"],
+            ["generation_runs.conversation_id", "generation_runs.id"],
+            name="fk_conversation_compactions_generation_scope",
             ondelete="CASCADE",
         ),
         CheckConstraint("model ~ '[^[:space:]]'", name="model_nonblank"),
@@ -63,13 +70,13 @@ class ConversationCompaction(IdentityTimestamps, Base):
         Index("ix_conversation_compactions_generation_id", "generation_id"),
     )
 
+    memory_dependencies: Mapped[dict[str, int]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+
     workspace_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     conversation_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
-    generation_id: Mapped[UUID] = mapped_column(
-        PostgresUUID(as_uuid=True),
-        ForeignKey("generation_runs.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    generation_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     prompt_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default=text("1")

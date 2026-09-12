@@ -439,7 +439,7 @@ async def test_active_generation_is_disclosed_only_in_scope_and_blocks_archive_a
             idempotency_key=uuid4(),
             request_hash="b" * 64,
             request_messages=[{"role": "user", "content": "작업 중인 질문"}],
-            options={},
+            thinking=False,
             prompt_tokens=10,
             max_output_tokens=10,
             status="running",

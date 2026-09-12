@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "AGENTS.md",
+    "docs/adr/0014-bounded-context-search-and-step-usage.md",
+    "docs/adr/0015-original-recall-and-personal-memory.md",
+    "docs/adr/0016-question-cards-and-execution-progress.md"
+  ],
+  "queries": [
+    {
+      "question": "질문 카드는 질문과 선택지를 몇 개까지 표시할 수 있나요?",
+      "evidence": "질문은 1~3개"
+    },
+    {
+      "question": "확인 질문을 보내고 사용자 답변을 기다릴 때 모델 연결을 계속 쓰나요?",
+      "evidence": "기다리는 동안 worker나 모델 연결을 점유하지 않는다."
+    },
+    {
+      "question": "질문 카드 기능을 끄는 설정은 무엇인가요?",
+      "evidence": "GENERATION_QUESTIONS_ENABLED=false"
+    },
+    {
+      "question": "Node의 스트림 POST에서 401 대신 502가 난 문제는 어떻게 해결했나요?",
+      "evidence": "credentials: omit"
+    },
+    {
+      "question": "저장된 개인 기억은 사용자당 최대 몇 개이며 내용 길이 제한이 있나요?",
+      "evidence": "사용자당 20개"
+    },
+    {
+      "question": "기억을 지우면 이미 표시한 답변과 직접 쓴 채팅 원문도 삭제하나요?",
+      "evidence": "이미 표시한 답변과 사용자가 직접 적었던 채팅 원문은 삭제하지 않는다."
+    },
+    {
+      "question": "개인 기억을 실제 답변에 넣었을 때 입력 토큰 비용은 어떻게 계산하나요?",
+      "evidence": "최종 모델이 실제로 읽은 기억·발췌의 입력 토큰"
+    },
+    {
+      "question": "과거 사용자 발언에서 외부 검색어로 전송할 수 있는 최대 글자 수는?",
+      "evidence": "과거 발언에서 선택한 표현의 합계는 80자 이내다."
+    },
+    {
+      "question": "자동 웹 검색은 최대 몇 회이며 준비 시간 제한은 얼마인가요?",
+      "evidence": "기본 검색은 최대 2회, 준비 반복은 총 90초"
+    },
+    {
+      "question": "검색 도구 호출 인자 크기 제한은 무엇인가요?",
+      "evidence": "분할 호출 인자는 4,096자로 제한한다."
+    },
+    {
+      "question": "새 가입자는 시스템 권한을 받을 수 있나요?",
+      "evidence": "일반 가입은 항상 `member`"
+    },
+    {
+      "question": "자동 문맥 압축이 원본 메시지를 지우나요?",
+      "evidence": "원본 메시지를 보존하고 완성된 요약만 재사용한다."
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "embedding_version": "multilingual-e5-small:614241f622f53c4eeff9890bdc4f31cfecc418b3:mean-v1",
+  "questions": 12,
+  "sources": {
+    "AGENTS.md": "c49b5f11f8e558f4c773cf76ff961ca3483dcca229319bce8940b1c84f6e67c3",
+    "docs/adr/0014-bounded-context-search-and-step-usage.md": "36b37ae7266f3972cd0658d784f4f5d19f60202e67fbac67e95ac92e74ad871f",
+    "docs/adr/0015-original-recall-and-personal-memory.md": "4323c760f35e3f1b954d439bd678fc2c8cf973a4e8180f0dc9f918407ecfb596",
+    "docs/adr/0016-question-cards-and-execution-progress.md": "db8c3522aab961f3cc2568fd126368b6bcf78924255566549f60f175bc7f2765"
+  },
+  "results": [
+    {
+      "size": 600,
+      "overlap": 80,
+      "chunks": 24,
+      "method": "keyword",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 1.0,
+      "misses": []
+    },
+    {
+      "size": 600,
+      "overlap": 80,
+      "chunks": 24,
+      "method": "vector",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.8055555555555555,
+      "misses": []
+    },
+    {
+      "size": 600,
+      "overlap": 80,
+      "chunks": 24,
+      "method": "hybrid",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.9583333333333334,
+      "misses": []
+    },
+    {
+      "size": 600,
+      "overlap": 80,
+      "chunks": 24,
+      "method": "hybrid",
+      "lexical_rerank": true,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 1.0,
+      "misses": []
+    },
+    {
+      "size": 900,
+      "overlap": 120,
+      "chunks": 16,
+      "method": "keyword",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.9583333333333334,
+      "misses": []
+    },
+    {
+      "size": 900,
+      "overlap": 120,
+      "chunks": 16,
+      "method": "vector",
+      "lexical_rerank": false,
+      "hit_at_4": 0.9166666666666666,
+      "mrr_at_4": 0.7569444444444445,
+      "misses": [
+        "자동 문맥 압축이 원본 메시지를 지우나요?"
+      ]
+    },
+    {
+      "size": 900,
+      "overlap": 120,
+      "chunks": 16,
+      "method": "hybrid",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.9027777777777778,
+      "misses": []
+    },
+    {
+      "size": 900,
+      "overlap": 120,
+      "chunks": 16,
+      "method": "hybrid",
+      "lexical_rerank": true,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.9166666666666666,
+      "misses": []
+    },
+    {
+      "size": 1200,
+      "overlap": 160,
+      "chunks": 22,
+      "method": "keyword",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.9444444444444443,
+      "misses": []
+    },
+    {
+      "size": 1200,
+      "overlap": 160,
+      "chunks": 22,
+      "method": "vector",
+      "lexical_rerank": false,
+      "hit_at_4": 0.8333333333333334,
+      "mrr_at_4": 0.4930555555555555,
+      "misses": [
+        "확인 질문을 보내고 사용자 답변을 기다릴 때 모델 연결을 계속 쓰나요?",
+        "자동 문맥 압축이 원본 메시지를 지우나요?"
+      ]
+    },
+    {
+      "size": 1200,
+      "overlap": 160,
+      "chunks": 22,
+      "method": "hybrid",
+      "lexical_rerank": false,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.8125,
+      "misses": []
+    },
+    {
+      "size": 1200,
+      "overlap": 160,
+      "chunks": 22,
+      "method": "hybrid",
+      "lexical_rerank": true,
+      "hit_at_4": 1.0,
+      "mrr_at_4": 0.9375,
+      "misses": []
+    }
+  ]
+}

@@ -154,7 +154,7 @@ async def test_downgrade_refuses_to_destroy_answer_versions(harness, postgres):
     before = await table_counts(harness.database)
     await harness.database.dispose()
     await run_alembic(postgres, "downgrade", "0010_worker_heartbeat", success=False)
-    assert await version_rows(harness.database) == ["0012_network_search"]
+    assert await version_rows(harness.database) == ["0017_schema_roles"]
     assert await table_counts(harness.database) == before
     assert (await snapshot(harness.database, second["id"])).run.is_current
 

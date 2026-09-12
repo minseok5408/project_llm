@@ -1,11 +1,11 @@
 'use client';
 
-import { Children, isValidElement, memo, useId, useMemo } from 'react';
-import type { ComponentPropsWithoutRef, ReactNode } from 'react';
+import { memo, useId, useMemo } from 'react';
+import type { ComponentPropsWithoutRef } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CopyButton } from './copy-button.tsx';
+import { CodeBlock } from './code-block.tsx';
 import { safeMarkdownUrl } from './markdown-policy.ts';
 
 function MarkdownLink({
@@ -31,36 +31,6 @@ function MarkdownLink({
     >
       {children}
     </a>
-  );
-}
-
-function CodeBlock({ children }: ComponentPropsWithoutRef<'pre'>) {
-  const code = Children.toArray(children).find((child) =>
-    isValidElement<{ children?: ReactNode; className?: string }>(child),
-  );
-  const properties = isValidElement<{
-    children?: ReactNode;
-    className?: string;
-  }>(code)
-    ? code.props
-    : null;
-  const text =
-    typeof properties?.children === 'string' ? properties.children : '';
-  const language = properties?.className?.match(/(?:^|\s)language-(\S+)/)?.[1];
-  return (
-    <div className="markdown-code-block">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-1">
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {language || '코드'}
-        </span>
-        <CopyButton text={text} label="코드 복사" />
-      </div>
-      {/* 긴 코드의 가로 스크롤을 키보드로도 이동할 수 있게 한다. */}
-      {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
-      <pre tabIndex={0} aria-label="코드">
-        {children}
-      </pre>
-    </div>
   );
 }
 

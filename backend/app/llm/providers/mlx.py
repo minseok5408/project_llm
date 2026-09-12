@@ -9,6 +9,7 @@ import httpx
 from backend.app.config import Settings
 from backend.app.llm.protocol import ProviderDelta, ProviderUnavailable
 from backend.app.llm.providers.common import _normalized_messages
+from backend.app.llm.providers.tool_calls import ToolCallBuffer
 from backend.app.schemas import ChatMessage, GenerationOptions, ProviderStatus
 
 
@@ -153,6 +154,8 @@ class MlxServerProvider:
         self,
         messages: Sequence[ChatMessage],
         options: GenerationOptions,
+        *,
+        tools: list[dict] | None = None,
     ) -> int:
         # 이미 실행 중인 모델 서버의 동일한 채팅 템플릿·토크나이저를 사용한다.
         # 게이트웨이에서 모델 가중치나 별도 토크나이저를 로드하지 않는다.
@@ -162,6 +165,8 @@ class MlxServerProvider:
             "max_output_tokens": options.max_tokens,
             "enable_thinking": options.thinking,
         }
+        if tools:
+            payload["tools"] = tools
         try:
             async with httpx.AsyncClient(
                 base_url=self.base_url, timeout=self._timeout, trust_env=False
@@ -190,6 +195,8 @@ class MlxServerProvider:
         self,
         messages: Sequence[ChatMessage],
         options: GenerationOptions,
+        *,
+        tools: list[dict] | None = None,
     ) -> AsyncIterator[ProviderDelta]:
         thinking = options.thinking
         payload = {
@@ -208,11 +215,15 @@ class MlxServerProvider:
             "repetition_penalty": 1.0,
             "enable_thinking": thinking,
         }
+        if tools:
+            # auto는 입력 계산과 다른 강제 지시를 서버가 덧붙이지 않도록 한다.
+            payload.update(tools=tools, tool_choice="auto", parallel_tool_calls=False)
 
         usage: ProviderDelta | None = None
         received: int | None = None
         finish_reason: str | None = None
         content = _VisibleContent()
+        tool_calls = ToolCallBuffer()
         response_received = False
         try:
             async with httpx.AsyncClient(
@@ -257,7 +268,10 @@ class MlxServerProvider:
                                 "MLX 서버의 스트리밍 응답이 올바르지 않습니다."
                             )
                         current_reason = choices[0].get("finish_reason")
-                        if isinstance(current_reason, str) and current_reason in ("stop", "length"):
+                        if isinstance(current_reason, str) and (
+                            current_reason in ("stop", "length")
+                            or (tools and current_reason == "tool_calls")
+                        ):
                             if finish_reason is not None and finish_reason != current_reason:
                                 raise ProviderUnavailable(
                                     "MLX 서버의 답변 종료 이유가 서로 다릅니다."
@@ -278,6 +292,10 @@ class MlxServerProvider:
                             raise ProviderUnavailable(
                                 "MLX 서버의 스트리밍 응답이 올바르지 않습니다."
                             )
+                        if delta.get("tool_calls"):
+                            if not tools or usage is not None:
+                                raise ProviderUnavailable("허용하지 않은 도구 호출을 받았습니다.")
+                            tool_calls.feed(delta["tool_calls"])
                         text = delta.get("content")
                         visible = ""
                         if isinstance(text, str) and text:
@@ -315,4 +333,11 @@ class MlxServerProvider:
             final=True,
             received_output_tokens=received,
             finish_reason=finish_reason,
+            tool_calls=tool_calls.finish(),
         )
+
+    async def count_tools(self, messages, options, tools) -> int:
+        return await self.count_input(messages, options, tools=tools)
+
+    def stream_tools(self, messages, options, tools):
+        return self.stream(messages, options, tools=tools)

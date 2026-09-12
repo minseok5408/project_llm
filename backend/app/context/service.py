@@ -2,12 +2,12 @@
 
 import asyncio
 from contextlib import aclosing
-from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
 from backend.app.context.builder import compose_context, list_context_turns
 from backend.app.context.compaction import count_context, plan_tail, summary_batch
+from backend.app.context.dependencies import check_dependencies
 from backend.app.context.status import context_measurement
 from backend.app.llm.protocol import ProviderUnavailable
 from backend.app.models import (
@@ -19,44 +19,45 @@ from backend.app.models import (
 )
 from backend.app.repositories import AccessDenied, InvalidInput, Repository
 from backend.app.runtime.cancellation import GenerationCancelled, cancellable
+from backend.app.runtime.contracts import GenerationJob, ModelExecution
 from backend.app.schemas import GenerationOptions
 from backend.app.services.token_quota import QuotaExceeded
 
-if TYPE_CHECKING:
-    from backend.app.services.generations import GenerationService
+
+async def latest_summary_record(session, conversation: Conversation):
+    row = await session.scalar(
+        select(ConversationCompaction)
+        .where(
+            ConversationCompaction.workspace_id == conversation.workspace_id,
+            ConversationCompaction.conversation_id == conversation.id,
+            ConversationCompaction.model == conversation.model,
+            ConversationCompaction.prompt_version == 1,
+            ConversationCompaction.status == "completed",
+        )
+        .order_by(
+            ConversationCompaction.through_sequence.desc(), ConversationCompaction.created_at.desc()
+        )
+        .limit(1)
+    )
+    if row is not None and await check_dependencies(session, row.memory_dependencies):
+        return row
+    return None
 
 
 async def latest_summary(session, conversation: Conversation) -> tuple[str | None, int]:
-    row = (
-        await session.execute(
-            select(ConversationCompaction.content, ConversationCompaction.through_sequence)
-            .where(
-                ConversationCompaction.workspace_id == conversation.workspace_id,
-                ConversationCompaction.conversation_id == conversation.id,
-                ConversationCompaction.model == conversation.model,
-                ConversationCompaction.prompt_version == 1,
-                ConversationCompaction.status == "completed",
-            )
-            .order_by(
-                ConversationCompaction.through_sequence.desc(),
-                ConversationCompaction.created_at.desc(),
-            )
-            .limit(1)
-        )
-    ).first()
+    row = await latest_summary_record(session, conversation)
     return (row.content, row.through_sequence) if row else (None, 0)
 
 
 class CompactionService:
-    def __init__(self, service: "GenerationService"):
-        self.service = service
+    def __init__(self, execution: ModelExecution):
         self.database, self.provider, self.settings = (
-            service.database,
-            service.provider,
-            service.settings,
+            execution.database,
+            execution.provider,
+            execution.settings,
         )
 
-    async def prepare(self, job: dict, cancellation: asyncio.Task) -> dict:
+    async def prepare(self, job: GenerationJob, cancellation: asyncio.Task) -> GenerationJob:
         # 순환 import는 실행 경계에서만 수행해 이벤트 저장 규칙을 한 곳에 유지한다.
         from backend.app.services.generations.events import add_event
 
@@ -129,7 +130,7 @@ class CompactionService:
                 update={"max_tokens": min(options.max_tokens, remaining_output)}
             )
             run.prompt_tokens, run.max_output_tokens = prompt_tokens, options.max_tokens
-            run.options = options.model_dump()
+            run.thinking = options.thinking
             run.request_messages = [message.model_dump() for message in context]
             run.context_compaction_needed = False
             add_event(
@@ -148,17 +149,19 @@ class CompactionService:
                     },
                 },
             )
-            result = {
+            result: GenerationJob = {
                 **job,
                 "prompt_tokens": prompt_tokens,
-                "options": dict(run.options),
+                "options": {"thinking": run.thinking, "max_tokens": run.max_output_tokens},
                 "messages": list(run.request_messages),
                 "context_compaction_needed": False,
             }
             await session.commit()
             return result
 
-    async def summarize(self, job, messages, options, prompt_tokens, through, cancellation) -> str:
+    async def summarize(
+        self, job: GenerationJob, messages, options, prompt_tokens, through, cancellation
+    ) -> str:
         async with self.database.session() as session:
             attempt = ConversationCompaction(
                 workspace_id=job["workspace_id"],
@@ -167,6 +170,7 @@ class CompactionService:
                 model=self.settings.llm_model_id,
                 through_sequence=through,
                 status="running",
+                memory_dependencies=dict(job.get("memory_dependencies", {})),
             )
             session.add(attempt)
             await session.commit()
@@ -231,7 +235,9 @@ class CompactionService:
                 .with_for_update()
             )
             if status == "completed":
-                if run.cancel_requested:
+                if run.cancel_requested or not await check_dependencies(
+                    session, attempt.memory_dependencies
+                ):
                     status, error_code = "cancelled", "user_cancelled"
                 elif run.status != "running":
                     status, error_code = "failed", "run_ended"

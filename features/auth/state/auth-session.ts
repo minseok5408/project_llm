@@ -1,3 +1,6 @@
+import { responseError } from '../../../lib/http.ts';
+export { responseError } from '../../../lib/http.ts';
+
 export type AuthSession = {
   user: {
     id: string;
@@ -23,19 +26,6 @@ export type AuthState =
 const INITIAL_STATE: AuthState = { status: 'checking' };
 const UNAVAILABLE_MESSAGE =
   '로그인 상태를 확인할 수 없습니다. 서버 연결을 확인한 뒤 다시 시도해 주세요.';
-
-export async function responseError(response: Response, fallback: string) {
-  const data: unknown = await response.json().catch(() => null);
-  if (
-    data &&
-    typeof data === 'object' &&
-    'detail' in data &&
-    typeof data.detail === 'string'
-  ) {
-    return data.detail;
-  }
-  return fallback;
-}
 
 function parseSession(value: unknown): AuthSession {
   const session = value as Partial<AuthSession> | null;

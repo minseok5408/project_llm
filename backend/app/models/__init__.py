@@ -4,7 +4,10 @@ from backend.app.db.base import Base
 from backend.app.models.auth import AuthIdentity, AuthSession
 from backend.app.models.compactions import ConversationCompaction
 from backend.app.models.conversations import Conversation
+from backend.app.models.documents import Chunk, Document, DocumentVersion
+from backend.app.models.generation_steps import GenerationStep
 from backend.app.models.generations import GenerationEvent, GenerationRun
+from backend.app.models.memories import UserMemory
 from backend.app.models.messages import Message
 from backend.app.models.quota import TokenBudget, TokenReservation, UsagePlan
 from backend.app.models.user_preferences import UserPreference
@@ -19,14 +22,19 @@ __all__ = [
     "Base",
     "Conversation",
     "ConversationCompaction",
+    "Chunk",
+    "Document",
+    "DocumentVersion",
     "GenerationEvent",
     "GenerationRun",
+    "GenerationStep",
     "Message",
     "TokenBudget",
     "TokenReservation",
     "UsagePlan",
     "User",
     "UserPreference",
+    "UserMemory",
     "WebSearchRun",
     "WorkerHeartbeat",
     "Workspace",

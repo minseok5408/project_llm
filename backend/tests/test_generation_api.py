@@ -437,7 +437,8 @@ async def test_output_limit_fits_remaining_balance_without_charging_before_compl
     async with schema_database.session() as session:
         stored = await session.get(GenerationRun, UUID(run["id"]))
         assert stored.prompt_tokens == 10
-        assert stored.max_output_tokens == stored.options["max_tokens"] == 3
+        assert stored.max_output_tokens == 3
+        assert stored.thinking is False
         reservation = await session.get(TokenReservation, stored.reservation_id)
         assert reservation.charge_mode == "deferred"
         assert reservation.status == "reserved"

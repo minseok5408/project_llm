@@ -15,6 +15,9 @@ from backend.app.tools.web_search.provider import SearchResult
 @pytest.mark.parametrize(
     "query",
     [
+        "안녕",
+        "안녕하세요!",
+        "Hello!",
         "파이썬 리스트와 튜플 차이를 설명해줘",
         "내 이름과 직업이 뭐라고?",
         "이어서 말해",

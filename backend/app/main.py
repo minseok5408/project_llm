@@ -12,8 +12,10 @@ from backend.app.api.auth import (
 )
 from backend.app.api.auth import router as auth_router
 from backend.app.api.conversations import router as conversations_router
+from backend.app.api.files import router as files_router
 from backend.app.api.generations import router as generations_router
 from backend.app.api.health import router as health_router
+from backend.app.api.memories import router as memories_router
 from backend.app.api.network_mode import router as network_mode_router
 from backend.app.api.usage import router as usage_router
 from backend.app.config import Settings, get_settings
@@ -80,6 +82,8 @@ def create_app(
     application.include_router(generations_router)
     application.include_router(usage_router)
     application.include_router(network_mode_router)
+    application.include_router(memories_router)
+    application.include_router(files_router)
 
     @application.get("/api/status", response_model=StatusResponse)
     async def status(request: Request, auth: CurrentAuth) -> StatusResponse:

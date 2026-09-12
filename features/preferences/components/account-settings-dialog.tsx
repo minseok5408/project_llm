@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Coins, Globe2, RefreshCw, Settings2, X } from 'lucide-react';
+import { Brain, Coins, Globe2, RefreshCw, Settings2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { TokenBalance } from '../../usage/types.ts';
+import { sidebarReturnFocus } from '../../chat/hooks/sidebar-focus.ts';
 
 const number = (value: number | null | undefined) =>
   value == null ? '—' : value.toLocaleString();
@@ -24,6 +25,7 @@ const number = (value: number | null | undefined) =>
 const sections = [
   { id: 'general', label: '일반', icon: Settings2 },
   { id: 'network', label: '연결 및 검색', icon: Globe2 },
+  { id: 'memory', label: '기억', icon: Brain },
   { id: 'usage', label: '사용량', icon: Coins },
 ] as const;
 
@@ -33,6 +35,7 @@ type SettingsContentProps = {
   usage: TokenBalance | null;
   generalSettings?: ReactNode;
   networkSettings?: ReactNode;
+  memorySettings?: ReactNode;
   onRefresh: () => void;
 };
 
@@ -115,6 +118,7 @@ export function AccountSettingsContent({
   usage,
   generalSettings,
   networkSettings,
+  memorySettings,
   onRefresh,
   initialTab = 'general',
 }: SettingsContentProps & { initialTab?: SettingsTab }) {
@@ -181,6 +185,7 @@ export function AccountSettingsContent({
         </h2>
         {tab === 'general' && generalSettings}
         {tab === 'network' && networkSettings}
+        {tab === 'memory' && memorySettings}
         {tab === 'usage' && (
           <TokenUsageDetails usage={usage} onRefresh={onRefresh} />
         )}
@@ -203,13 +208,13 @@ export function AccountSettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        finalFocus={returnFocus}
+        finalFocus={() => sidebarReturnFocus(returnFocus.current)}
         className="flex h-[min(560px,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-[760px]"
       >
         <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-5 py-4 sm:px-6">
           <DialogTitle className="text-lg font-semibold">설정</DialogTitle>
           <DialogDescription className="sr-only">
-            화면, 연결 및 검색, 사용량을 관리합니다.
+            화면, 연결 및 검색, 기억, 사용량을 관리합니다.
           </DialogDescription>
           <DialogClose
             render={

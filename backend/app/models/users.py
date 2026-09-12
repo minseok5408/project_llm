@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from backend.app.db.base import Base
@@ -13,6 +13,7 @@ class User(IdentityTimestamps, Base):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("email"),
+        CheckConstraint("memory_revision >= 0", name="memory_revision"),
         CheckConstraint("email = lower(btrim(email))", name="email_normalized"),
         CheckConstraint("char_length(email) BETWEEN 3 AND 320", name="email_length"),
         CheckConstraint(
@@ -34,6 +35,9 @@ class User(IdentityTimestamps, Base):
     # 서비스 전체 역할이며 작업 공간의 owner/admin/member 권한과 별도로 관리한다.
     platform_role: Mapped[str] = mapped_column(
         String(20), nullable=False, default="member", server_default=text("'member'")
+    )
+    memory_revision: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default=text("0")
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

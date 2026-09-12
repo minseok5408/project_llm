@@ -20,6 +20,8 @@ export async function resolve(specifier, context, nextResolve) {
 }
 
 export async function load(url, context, nextLoad) {
+  if (url.endsWith('.css'))
+    return { source: '', format: 'module', shortCircuit: true };
   if (!url.endsWith('.tsx')) return nextLoad(url, context);
   const source = await readFile(new URL(url), 'utf8');
   const result = ts.transpileModule(source, {
