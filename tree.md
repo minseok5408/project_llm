@@ -74,10 +74,16 @@ project_llm/
 │   │   ├── worker.py           # 독립 worker CLI 진입점
 │   │   ├── config.py           # 모델·DB·검색·파일 환경 설정
 │   │   └── schemas.py          # API 요청·응답 검증
+│   ├── evaluation/             # 합성 답변 평가 자료·실행·사람 채점·기준선 비교
+│   │   ├── fixtures/           # 고정 질문·참고 자료·0~2점 채점 기준
+│   │   ├── schema.py           # 자료 형식·loopback 평가 주소 검증
+│   │   ├── runner.py           # 기존 입력 정책 재사용·실행 결과·실사용량 기록
+│   │   └── scoring.py          # 답변에 결합한 채점·미평가 구분·회귀 판정
 │   ├── migrations/versions/    # Alembic 이력, head 0017_schema_roles
 │   └── tests/                  # 모델 없는 코드 검사·격리 PostgreSQL 통합 검사
 ├── docs/
 │   ├── development-status.md   # 구현 현황·최근 변경·한계·검증 범위
+│   ├── answer-quality-evaluation.md # 실제 모델 답변 품질 기준·로컬 평가 절차
 │   ├── adr/                    # 기능별 결정과 당시 검증 기록
 │   └── evaluations/            # 실제 모델·문서 검색의 합성 평가 결과
 ├── hooks/                       # 여러 화면에서 쓰는 공통 React 훅
@@ -90,6 +96,7 @@ project_llm/
 │   ├── dev.py                  # 명시적으로 실행한 웹·API·worker·모델 관리
 │   ├── manage_accounts.py      # 로컬 시스템 계정·플랜·예산 관리
 │   ├── setup_rag.py            # 고정 로컬 임베딩 모델 설치
+│   ├── evaluate_answers.py     # 답변 자료 검증·실제 모델 실행·채점·기준선 비교
 │   ├── evaluate_file_rag.py    # 문서 검색 품질 비교
 │   ├── evaluate_answer_language.py # 입력 언어·번역·혼용 합성 평가
 │   ├── evaluate_context.py     # 문맥 계약·선택형 실제 모델 평가
