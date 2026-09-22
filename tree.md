@@ -61,6 +61,10 @@ project_llm/
 │   │   ├── files/              # 원본·격리 파싱·로컬 임베딩·검색·삭제 표시
 │   │   ├── tools/
 │   │   │   ├── questions.py   # 질문 카드 도구·검증·실제 입력 한도
+│   │   │   ├── calculation/
+│   │   │   │   ├── evaluator.py # 외부 접근 없는 제한 산술·Python AST 해석
+│   │   │   │   ├── planning.py  # 질문 의도·수치 근거·완전한 코드 원문 검증
+│   │   │   │   └── service.py   # 준비 단계·실제 사용량·최종 문맥·중단 연결
 │   │   │   └── web_search/    # 검색 계획·제한 재검색·Tavily/Brave 어댑터
 │   │   ├── services/
 │   │   │   ├── generations/  # 생성 승인·본문 저장·정산·영속 이벤트
@@ -78,6 +82,7 @@ project_llm/
 │   │   ├── fixtures/           # 고정 질문·참고 자료·0~2점 채점 기준
 │   │   ├── schema.py           # 자료 형식·loopback 평가 주소 검증
 │   │   ├── runner.py           # 기존 입력 정책 재사용·실행 결과·실사용량 기록
+│   │   ├── calculation.py      # 제품과 같은 계산 근거·준비 모델 사용량의 독립 평가
 │   │   └── scoring.py          # 답변에 결합한 채점·미평가 구분·회귀 판정
 │   ├── migrations/versions/    # Alembic 이력, head 0017_schema_roles
 │   └── tests/                  # 모델 없는 코드 검사·격리 PostgreSQL 통합 검사
@@ -136,6 +141,7 @@ project_llm/
     └── 영속 작업 큐 ← 독립 worker (DB advisory 연결로 단일 실행자 선출)
             ├── 필요 시 문맥 압축 → 허용된 웹검색·제한 재검색
             ├── 같은 대화 원문·개인 기억·첨부 문서의 로컬 검색
+            ├── 필요한 숫자 계산·원문 Python의 제한 추적
             ├── 실제 입력량·권한·예산 확인 → 질문 카드 또는 답변
             ↓
         MLX-VLM 서버 127.0.0.1:8080 (입력 토큰 계산·추론·실제량 반환)
@@ -211,7 +217,11 @@ project_llm/
 
 `backend/app/runtime/contracts.py`의 `GenerationJob`은 실행자가 DB에서 인수한 작업 ID·문맥·옵션·네트워크 정책 등 작업 스냅샷을 명시합니다. `ModelExecution`은 DB·모델 공급자·환경 설정만 전달하며 생성 승인·중단·정산 메서드를 포함하지 않습니다.
 
-`runtime/worker.py`가 압축·검색·로컬 기억/원문·파일 검색·질문 카드·최종 답변을 조합합니다. 문맥·파일·질문 기능은 필요한 실행 의존성을 받고, 웹검색은 검색 공급자와 네트워크 정책을 별도로 받습니다. `StepService`는 DB·설정만 받아 실제 단계·사용량을 기록합니다. `services/generations/`의 승인·본문 저장·정산·영속 이벤트 책임은 유지합니다.
+`runtime/worker.py`가 압축·검색·로컬 기억/원문·파일 검색·로컬 계산·질문 카드·최종 답변을 조합합니다. 문맥·파일·질문 기능은 필요한 실행 의존성을 받고, 웹검색은 검색 공급자와 네트워크 정책을 별도로 받습니다. `StepService`는 DB·설정만 받아 실제 단계·사용량을 기록합니다. `services/generations/`의 승인·본문 저장·정산·영속 이벤트 책임은 유지합니다.
+
+`tools/calculation/evaluator.py`는 DB·모델·파일·네트워크에 접근하지 않는 제한 AST 해석기입니다. `planning.py`가 현재 질문의 의도·수치 근거·완전한 코드 원문을 검증하고, `service.py`가 산술 계획 또는 코드 직접 추적을 기존 단계·후정산·취소·권한·최종 문맥 예산에 연결합니다. Python 원문 직접 추적은 계획 모델 호출을 생략하며 최종 답변의 일반 모드·생각하기 선택은 유지합니다. 계산된 식과 질문 조건의 의미 일치는 구분합니다. [ADR 0023](docs/adr/0023-local-calculation-verification.md)에 지원 문법·자원 한도·실패 정책을 기록합니다.
+
+`evaluation/calculation.py`는 같은 판단·해석·참고 지침을 합성 평가에서 재사용하고 준비 사용량을 최종 답변과 분리합니다. `scripts/evaluate_answers.py run`은 기본으로 이 경로를 사용하며 `--no-local-calculation`으로 비교용 비활성화를 명시합니다. 독립 평가는 사용자 DB·계정 정산을 사용하지 않습니다.
 
 ## 파일·언어·DB
 
@@ -236,6 +246,7 @@ project_llm/
 - `tests/chat-workbench-hooks.test.mjs`, `chat-scroll.test.mjs`, `chat-render.test.mjs`: 초기 SSR, 브라우저 이벤트·타이머·도구 정리, 스크롤과 화면 연결을 검사합니다.
 - `backend/tests/test_repositories.py`, `test_conversation_deletion.py`: 권한·목록·메시지·대화와 첨부의 원자적 삭제를 검사합니다.
 - `backend/tests/test_generations.py`와 문맥·검색·파일·질문·worker 검사: 실행 계약 분리 후 승인·중단·문맥·실제 사용량 정산을 확인합니다.
+- `backend/tests/test_local_calculation_evaluator.py`, `test_local_calculation.py`, `test_quality_calculation.py`: 제한 AST의 산술·Python 의미·자원 및 접근 차단, 준비 단계·취소·사용량·최종 문맥, 독립 평가의 계산 기록을 검사합니다.
 - `scripts/test_db.py`: 임시 PostgreSQL에서 migration 왕복·스키마 비교·백엔드 검사를 실행한 뒤 임시 리소스를 정리합니다.
 
 최종 검사 결과는 [개발 현황](docs/development-status.md)에 기록합니다. 실행 명령과 운영 절차는 [run.md](run.md), 과거 기능별 결정은 `docs/adr/`의 당시 기록을 유지합니다.

@@ -38,6 +38,7 @@ class PlanningProvider(RecordingChatProvider):
             ToolCall("finish_1", "finish_search", '{"reason":"sufficient"}'),
         ]
         self.plan_calls = []
+        self.calculation_calls = []
         self.plan_started = asyncio.Event()
         self.plan_release = asyncio.Event()
         self.plan_blocked = False
@@ -51,6 +52,17 @@ class PlanningProvider(RecordingChatProvider):
         if tools[0]["function"]["name"] == "ask_user_question":
             async for delta in self.stream(messages, options):
                 yield delta
+            return
+        if tools[0]["function"]["name"] == "calculate":
+            self.calculation_calls.append(messages)
+            yield ProviderDelta(
+                final=True,
+                input_tokens=100,
+                output_tokens=20,
+                received_output_tokens=20,
+                finish_reason="tool_calls",
+                tool_calls=(ToolCall("calculate_1", "calculate", '{"expression":"2 + 2"}'),),
+            )
             return
         self.plan_calls.append(messages)
         self.plan_started.set()
@@ -94,15 +106,15 @@ async def steps(harness, run_id):
 
 
 @pytest.mark.parametrize(
-    "content",
+    ("content", "calculation"),
     [
-        pytest.param("안녕", id="greeting"),
-        pytest.param("파이썬 리스트를 설명해줘", id="basic-concept"),
-        pytest.param("'고마워'를 영어로 번역해줘", id="translation"),
-        pytest.param("2 + 2는 얼마야?", id="calculation"),
+        pytest.param("안녕", False, id="greeting"),
+        pytest.param("파이썬 리스트를 설명해줘", False, id="basic-concept"),
+        pytest.param("'고마워'를 영어로 번역해줘", False, id="translation"),
+        pytest.param("2 + 2는 얼마야?", True, id="calculation"),
     ],
 )
-async def test_auto_without_web_need_skips_search_planning_and_steps(harness, content):
+async def test_auto_without_web_need_skips_search_planning_and_steps(harness, content, calculation):
     search, model = install(harness)
     request = await harness.submit(content=content, network_mode="auto", web_search="auto")
     await harness.execute_next()
@@ -112,9 +124,18 @@ async def test_auto_without_web_need_skips_search_planning_and_steps(harness, co
     assert saved.run.network_mode == saved.run.web_search_mode == "auto"
     assert search.check_calls == 0 and search.search_calls == []
     assert model.plan_calls == []
+    assert len(model.calculation_calls) == int(calculation)
     assert len(model.calls) == 1
     assert await search_record(harness, request["id"]) is None
-    assert [row.name for row in await steps(harness, request["id"])] == ["answer"]
+    rows = await steps(harness, request["id"])
+    assert [row.name for row in rows] == (
+        ["calculation_plan", "calculate", "answer"] if calculation else ["answer"]
+    )
+    assert all(row.status == "completed" for row in rows)
+    assert saved.reservation.input_tokens == saved.run.prompt_tokens + (100 if calculation else 0)
+    assert saved.reservation.output_tokens == saved.assistant.token_count + (
+        20 if calculation else 0
+    )
 
 
 async def test_context_search_and_review_settle_once_only_after_answer(harness):

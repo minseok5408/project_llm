@@ -26,6 +26,7 @@ from backend.app.schemas import ChatMessage, GenerationOptions
 from backend.app.services.generations import GenerationService
 from backend.app.services.generations.events import add_event, now
 from backend.app.services.token_quota import QuotaExceeded
+from backend.app.tools.calculation.service import CalculationService
 from backend.app.tools.questions import (
     QUESTION_TOOLS,
     parse_question_card,
@@ -229,6 +230,7 @@ class GenerationWorker:
             job = await FileContextService(execution, self.files.embeddings).prepare(
                 job, cancellation
             )
+            job = await CalculationService(execution).prepare(job, cancellation)
             job, questions_enabled = await prepare_questions(execution, job, cancellation)
             messages = [ChatMessage.model_validate(message) for message in job["messages"]]
             options = GenerationOptions.model_validate(job["options"])

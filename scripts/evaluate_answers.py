@@ -70,6 +70,7 @@ def parser() -> argparse.ArgumentParser:
         child.add_argument("--context-window", type=int, default=32768)
         child.add_argument("--max-tokens", type=int, default=512)
         child.add_argument("--thinking", action="store_true")
+        child.add_argument("--no-local-calculation", action="store_false", dest="local_calculation")
         child.add_argument("--timeout-seconds", type=float, default=120)
         if name == "run":
             child.add_argument("--base-url", default="http://127.0.0.1:8080/v1")
@@ -125,6 +126,7 @@ def execute(arguments) -> int:
             model=arguments.command == "run",
             selected=arguments.case,
             repeat=arguments.repeat,
+            local_calculation=arguments.local_calculation,
         )
         output = arguments.output
         template_path = getattr(arguments, "review_template", None)

@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "fixture_id": "arithmetic-code-generalization-v1",
+  "description": "계산·Python 출력 추론 정책 개선의 일반화를 확인하기 위해 모델 답변을 보기 전에 고정한 합성 추가 검증 8개 사례다. 정답은 독립 산술 계산과 파일·네트워크를 사용하지 않는 Python 식으로 확인했다.",
+  "scope": "연속 할인·부피 단위·결제와 환불·가중평균 및 복합 필터·map·정렬과 슬라이스 순서·음수 정수 나눗셈의 정확성만 검사한다. 기존 answer-quality-v1 24개를 대체하거나 기존 기준선과 점수를 직접 비교하는 자료가 아니다. 실제 사용자 데이터·외부 서비스·파일 접근·장기 문맥·생각하기 경로는 다루지 않는다.",
+  "rubric": {
+    "version": 1,
+    "score_levels": {
+      "0": "정답을 제시하지 않거나 수치·연산·리스트 순서가 명백히 틀림",
+      "1": "오류 없이 정답 일부만 제시하거나 요청된 수치의 단위를 빠뜨림",
+      "2": "요청한 모든 수치 또는 리스트 원소와 순서를 정확히 제시함"
+    },
+    "dimensions": {
+      "factuality": "합성 문제의 산술 결과·단위·Python 표준 출력의 정확성"
+    }
+  },
+  "cases": [
+    {
+      "id": "arithmetic_successive_discount",
+      "category": "arithmetic_generalization",
+      "question": "정가 50,000원인 가방에 먼저 20% 할인을 적용하고, 그 할인된 가격에서 다시 10%를 할인했어. 다른 비용은 없어. 최종 가격과 정가에서 줄어든 총 할인액을 알려줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "discount_amounts",
+          "dimension": "factuality",
+          "description": "두 할인을 순서대로 적용하고 최종 가격과 할인액을 구분한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "최종 가격 또는 할인액 중 제시한 값이 하나라도 틀리거나, 할인율을 단순 합산해 30%로 계산하거나, 유효한 금액 답변이 없다.",
+            "1": "최종 가격 36,000원 또는 총 할인액 14,000원 중 하나만 맞게 제시하고 다른 금액은 생략한다. 두 수치가 맞더라도 가격과 할인액의 연결 또는 원 단위가 불명확하면 1점이다.",
+            "2": "50,000 × 0.8 × 0.9 = 36,000원이 최종 가격이고 50,000 - 36,000 = 14,000원이 총 할인액이라고 정확히 구분한다. 계산식을 쓰지 않아도 두 금액과 의미·단위가 정확하면 충족한다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "arithmetic_mixed_volume",
+      "category": "arithmetic_generalization",
+      "question": "물통에 처음 1.75 L가 들어 있었어. 여기서 350 mL를 따르고, 이어서 0.60 L를 더 따랐어. 물을 추가하거나 흘린 적은 없어. 남은 물의 양을 mL 단위로 알려줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "remaining_volume",
+          "dimension": "factuality",
+          "description": "L와 mL를 같은 단위로 바꾼 뒤 두 사용량을 뺀다.",
+          "required": true,
+          "score_anchors": {
+            "0": "남은 양을 800 mL와 다른 부피로 답하거나 단위 환산이 틀리거나 유효한 잔량을 제시하지 않는다.",
+            "1": "수치 800은 맞지만 단위를 쓰지 않거나, 동등한 0.8 L만 제시해 요청된 mL 표현을 빠뜨린다.",
+            "2": "1,750 mL - 350 mL - 600 mL = 800 mL에 해당하는 잔량 800 mL를 정확히 제시한다. 계산식이나 별도 설명은 필수가 아니다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "arithmetic_refund_balance",
+      "category": "arithmetic_generalization",
+      "question": "선불 잔액이 50,000원이었어. 18,750원을 결제한 뒤 그 결제액 중 6,250원을 같은 잔액으로 환불받았고, 이후 9,000원을 추가로 사용했어. 마지막 잔액은 얼마야? 수수료나 다른 거래는 없어.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "final_balance",
+          "dimension": "factuality",
+          "description": "결제·추가 사용은 빼고 환불은 더해 마지막 잔액을 구한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "잔액을 28,500원과 다른 금액으로 확정하거나 환불을 지출로 처리하거나 최종 잔액을 제시하지 않는다.",
+            "1": "최종 잔액 수치 28,500은 맞지만 원 단위를 빠뜨리거나 금액이 최종 잔액인지 명시하지 않아 의미가 불명확하다.",
+            "2": "50,000 - 18,750 + 6,250 - 9,000 = 28,500원에 해당하는 최종 잔액 28,500원을 정확히 답한다. 원 단위가 명확한 2만 8,500원 같은 동등한 표현도 인정한다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "arithmetic_weighted_average",
+      "category": "arithmetic_generalization",
+      "question": "서로 다른 작업 10건의 처리 시간을 정리했어. 앞의 4건은 평균 12분, 나머지 6건은 평균 17분이야. 전체 10건의 평균 처리 시간은 몇 분이야? 각 작업은 정확히 한 번씩 집계했어.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "weighted_mean",
+          "dimension": "factuality",
+          "description": "묶음의 건수를 가중치로 사용해 전체 평균을 구한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "평균을 15분과 다른 값으로 답하거나 두 묶음 평균을 단순 평균해 14.5분이라고 하거나 유효한 전체 평균을 제시하지 않는다.",
+            "1": "평균 수치 15는 맞지만 분 단위를 빠뜨리거나 전체 평균과 합계 시간의 의미를 불명확하게 표현한다.",
+            "2": "(4 × 12 + 6 × 17) / 10 = 15분에 해당하는 전체 평균 15분을 정확히 제시한다. 계산식이나 별도 설명은 필수가 아니다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "python_compound_filter",
+      "category": "code_generalization",
+      "question": "아래 Python 프로그램이 출력하는 리스트를 알려줘.\nlevels = [1, 4, 7, 10, 13]\nselected = [level for level in levels if level > 5 and level % 2 == 1]\nprint(selected)",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "printed_list",
+          "dimension": "factuality",
+          "description": "크기와 홀수 조건을 동시에 만족하는 원소를 원래 순서로 남긴다.",
+          "required": true,
+          "score_anchors": {
+            "0": "7과 13 외 원소를 결과에 넣거나 원소 순서를 뒤집거나 다른 값을 출력한다고 하거나 출력 결과를 답하지 않는다.",
+            "1": "잘못된 원소나 순서 오류는 없지만 7 또는 13 중 하나만 결과로 제시하고 다른 하나를 누락한다.",
+            "2": "출력 리스트가 [7, 13]임을 정확히 제시한다. 공백·코드 블록·짧은 설명의 유무는 점수에 영향을 주지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "python_map_transform",
+      "category": "code_generalization",
+      "question": "다음 Python 코드 실행 후 화면에 표시되는 리스트 값은 무엇이야?\ninputs = [2, 5, 8]\nconverted = list(map(lambda item: item * 3 - 1, inputs))\nprint(converted)",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "printed_list",
+          "dimension": "factuality",
+          "description": "각 원소에 곱셈 후 뺄셈을 적용하고 map의 입력 순서를 보존한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "변환 결과 중 제시한 원소가 하나라도 틀리거나 순서를 바꾸거나 map 객체 자체가 출력된다고 하거나 출력 결과를 답하지 않는다.",
+            "1": "5, 14, 23 중 일부를 올바른 상대 순서로 답하고 잘못된 값은 없지만 완성된 세 원소 리스트를 제시하지 않는다.",
+            "2": "출력 리스트 [5, 14, 23]의 모든 원소와 순서를 정확히 제시한다. 공백·코드 블록·짧은 설명의 유무는 점수에 영향을 주지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "python_sort_slice_order",
+      "category": "code_generalization",
+      "question": "이 Python 코드의 출력 리스트를 계산해줘.\nranks = [3, 1, 4, 2]\nordered = sorted(ranks, reverse=True)[1:]\nprint([rank * 2 for rank in ordered])",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "printed_list",
+          "dimension": "factuality",
+          "description": "내림차순 정렬 후 첫 원소를 제외하고 남은 원소를 두 배로 만든다.",
+          "required": true,
+          "score_anchors": {
+            "0": "정렬 방향·슬라이스 적용 순서·곱셈을 잘못 적용해 제시한 원소나 순서가 하나라도 틀리거나 출력 결과를 답하지 않는다.",
+            "1": "6, 4, 2 중 일부를 올바른 상대 순서로 답하고 잘못된 값은 없지만 완성된 세 원소 리스트를 제시하지 않는다.",
+            "2": "내림차순 [4, 3, 2, 1]에서 첫 원소를 제외한 [3, 2, 1]을 두 배로 만든 최종 출력 [6, 4, 2]를 정확히 제시한다. 중간 과정 설명은 필수가 아니다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    },
+    {
+      "id": "python_negative_floor_division",
+      "category": "code_generalization",
+      "question": "다음 Python 프로그램의 출력 리스트를 알려줘.\nnumbers = [-8, -1, 1, 8]\nquotients = [number // 3 for number in numbers]\nprint(quotients)",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "printed_list",
+          "dimension": "factuality",
+          "description": "Python 정수 나눗셈이 음수에서도 음의 무한대 방향으로 내림함을 적용한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "음수 나눗셈을 0 방향으로 버리거나 다른 원소를 틀리거나 출력 순서를 바꾸거나 출력 결과를 답하지 않는다.",
+            "1": "-3, -1, 0, 2 중 일부를 올바른 상대 순서로 답하고 잘못된 값은 없지만 완성된 네 원소 리스트를 제시하지 않는다.",
+            "2": "출력 [-3, -1, 0, 2]의 모든 원소와 순서를 정확히 제시한다. 공백·코드 블록·짧은 설명의 유무는 점수에 영향을 주지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": []
+    }
+  ]
+}

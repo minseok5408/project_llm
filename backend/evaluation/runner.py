@@ -139,6 +139,7 @@ def prepare_report(
     model: bool = False,
     selected: list[str] | None = None,
     repeat: int = 1,
+    local_calculation: bool = True,
 ) -> tuple[dict, dict[str, list[ChatMessage]]]:
     if type(repeat) is not int or not 1 <= repeat <= 5:
         raise ValueError("반복 횟수는 1부터 5 사이여야 합니다.")
@@ -166,6 +167,7 @@ def prepare_report(
         },
         "implementation": implementation_metadata(),
         "configuration": {
+            "local_calculation": local_calculation,
             "model": settings.llm_model_id if model else None,
             "context_window": settings.llm_context_window,
             "max_tokens": options.max_tokens,
@@ -223,6 +225,8 @@ async def run_case(
     provider: ChatProvider,
     settings: Settings,
     options: GenerationOptions,
+    *,
+    local_calculation: bool = True,
 ) -> None:
     """실패한 실행도 답변·확인된 사용량을 보존하며 재시도하지 않는다."""
     execution = result["execution"]
@@ -232,6 +236,16 @@ async def run_case(
     error = None
     try:
         async with asyncio.timeout(settings.llm_request_timeout_seconds):
+            if local_calculation:
+                from backend.evaluation.calculation import prepare_calculation
+
+                messages = await prepare_calculation(
+                    result, messages, case.question, provider, settings
+                )
+            else:
+                result["calculation"] = {"status": "disabled"}
+            result["input_messages"] = _normalized_messages(messages)
+            result["input_sha256"] = canonical_hash(result["input_messages"])
             if sum(len(m["content"]) for m in _normalized_messages(messages)) > (
                 settings.llm_max_history_chars
             ):
@@ -300,7 +314,9 @@ async def run_case(
         raise
     finally:
         if error is None:
-            if final is None:
+            if result.get("calculation", {}).get("status") == "failed":
+                error = "calculation_preparation_failed"
+            elif final is None:
                 error = "missing_final_usage"
             elif not result["answer"].strip():
                 error = "empty_answer"
@@ -348,6 +364,7 @@ async def run_model(
                 provider,
                 settings,
                 options,
+                local_calculation=report["configuration"].get("local_calculation", False),
             )
             report["completed_cases"] = sum(
                 item["execution"]["status"] == "completed" for item in report["cases"]

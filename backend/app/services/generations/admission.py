@@ -381,7 +381,16 @@ class AdmissionMixin:
                     "첨부 파일 준비가 끝난 뒤 보내세요. 실패한 파일은 재시도하거나 삭제해 주세요."
                 )
             authorized_tokens = prompt_tokens + effective_options.max_tokens
-            if compaction_needed or search_possible or through or memory_revision or file_states:
+            from backend.app.tools.calculation.planning import should_calculate
+
+            if (
+                compaction_needed
+                or search_possible
+                or through
+                or memory_revision
+                or file_states
+                or should_calculate(content)
+            ):
                 authorized_tokens = self.settings.llm_context_window
                 if not balance.unlimited:
                     authorized_tokens = min(authorized_tokens, balance.remaining_tokens or 0)
