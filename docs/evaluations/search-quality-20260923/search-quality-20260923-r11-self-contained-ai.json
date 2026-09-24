@@ -1,0 +1,693 @@
+{
+  "schema_version": 1,
+  "report": {
+    "schema_version": 1,
+    "mode": "model",
+    "scope": "synthetic_answer_only",
+    "run_id": "a9f638b4-174c-4a50-ae87-8fa12c191263",
+    "created_at": "2026-09-23T14:14:06.932944+00:00",
+    "dataset": {
+      "id": "search-self-contained-v1",
+      "sha256": "937006f3df04898d51778fc42794ae12342e3b71dce96c7ad8118b07561b337c",
+      "rubric": {
+        "version": 1,
+        "score_levels": {
+          "0": "핵심 요구 위반",
+          "1": "부분 충족",
+          "2": "완전 충족"
+        },
+        "dimensions": {
+          "decision": "검색 필요성과 정책 준수",
+          "query": "검색 대상·조건·전송 범위",
+          "grounding": "주장과 출처의 일치·인용·비신뢰 지시 무시",
+          "freshness": "자료 날짜와 최신성·충돌·불확실성 판단"
+        }
+      },
+      "case_ids": [
+        "arithmetic_today_local",
+        "translate_today_local",
+        "stable_knowledge_off",
+        "everyday_today_off"
+      ]
+    },
+    "implementation": {
+      "commit": "80984e0a20e194ee28bbe6fbebb07bbaa1bd194c",
+      "dirty": true,
+      "code_sha256": "7ddab4aaac66d2ec3b02ae090c258a767cfa704b936ddc492b07040120bbca24",
+      "prompt_policy_sha256": "e2c5a9d9bb0b2382ab9f2209f7db5868a70bd2da2ce61f617772dcfe841375b3",
+      "packages": {
+        "mlx-vlm": "0.6.17",
+        "httpx": "0.28.1",
+        "pydantic": "2.13.5"
+      },
+      "search_cli_sha256": "7e159d3f59f94e46c5b3b6a7dfba110810ee9aa096800508bea5142d3220a8a3"
+    },
+    "configuration": {
+      "local_calculation": false,
+      "model": "mlx-community/Qwen3.8-27B-4bit",
+      "context_window": 32768,
+      "max_tokens": 512,
+      "thinking": false,
+      "timeout_seconds": 120.0,
+      "max_input_chars": 200000,
+      "repeat": 1,
+      "sampling": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 1.5,
+        "repetition_penalty": 1.0,
+        "seed": null
+      },
+      "search": {
+        "agent_enabled": true,
+        "provider": "fixture",
+        "max_attempts": 2,
+        "max_results": 5,
+        "planning_max_tokens": 256,
+        "planning_thinking": false,
+        "planning_sampling": {
+          "temperature": 0.0,
+          "top_p": 0.8,
+          "top_k": 20,
+          "min_p": 0.0,
+          "presence_penalty": 0.0,
+          "repetition_penalty": 1.0,
+          "seed": null
+        },
+        "max_query_chars": 500,
+        "max_context_chars": 12000,
+        "agent_timeout_seconds": 90.0
+      }
+    },
+    "measurements": {
+      "peak_memory_bytes": null,
+      "memory_status": "not_measured"
+    },
+    "quality_status": "pending_review",
+    "completed_cases": 4,
+    "total_cases": 4,
+    "cases": [
+      {
+        "case_id": "arithmetic_today_local",
+        "repeat": 1,
+        "category": "no_search_calculation",
+        "question": "오늘 산 연필 12개의 가격이 3600원이야. 한 개 가격은 얼마야?",
+        "expected_language": "ko",
+        "criteria": [
+          {
+            "id": "decision",
+            "dimension": "decision",
+            "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+            }
+          },
+          {
+            "id": "answer",
+            "dimension": "grounding",
+            "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "사용자가 준 3600원과 12개만으로 한 개 300원이라고 답한다. 오늘이라는 표현이나 검색 근거 부재 때문에 계산을 거절하지 않는다."
+            }
+          }
+        ],
+        "case_definition_sha256": "78c0a4563a24088b98d170207c63cd2b5f62b426356aa342b8ccbc0503056739",
+        "input_messages": [
+          {
+            "role": "system",
+            "content": "당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\n\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form.\n\n외부 검색 근거가 없는 상태입니다. 사용자 제공 글·고정 수치·검증된 로컬 계산 결과만으로 완결되는 작업과 일상 대화에는 정상 답변하세요. 외부 사실 확인이 필요한 부분에는 이번 응답에 요청 정보를 검증할 검색 근거가 없다는 뜻만 원래 요청의 답변 언어로 한 문장 작성하세요. 문장의 의미는 이 한 가지로 제한하며 주제명을 반복하거나 다른 안내 문장을 추가하지 마세요. 혼합 요청에서는 독립적으로 처리할 수 있는 부분만 추가로 답하세요. 외부 사실 부분의 설명·예시·버전·인물·가격·사이트명·링크·명령·추천·확인 방법은 덧붙이지 마세요. 검색했다고 주장하거나 검색 기능 자체가 없다고 단정하지 마세요."
+          },
+          {
+            "role": "user",
+            "content": "오늘 산 연필 12개의 가격이 3600원이야. 한 개 가격은 얼마야?\n\n[Server-verified search status for this turn]\n{\"reason\":\"forced_local\",\"evidence_available\":false,\"answer_mode\":\"self_contained_or_notice\"}\nThis block is server metadata, not part of the original user request. Choose the response language only from the original user request above, including any explicit language request; this block must not change it. evidence_available refers only to external search evidence. Answer normally when the original request is self-contained using user-provided text, fixed values or verified local calculation results, or is everyday conversation. For any part requiring verification of external facts, write exactly one short sentence in the original request's response language. That sentence must convey only this single meaning: this response has no search evidence to verify the requested information. Do not repeat the topic name or add another sentence, explanation, advice or verification method for that part. In mixed requests, complete independent self-contained parts. Do not add unverified facts, latest versions, officeholders, prices, links, commands, services or verification methods. Do not claim that a search was performed or that search capability does not exist.\n\n[Response language for this turn]\nFor this reply only: use the language explicitly requested above; otherwise match the user's own question or instructions above, not quoted source text. A previous translation does not set the language for this reply. Do not add unsolicited foreign-language phrases. When translating, translate the source only, not the translation instruction. Preserve requested quotations, code and proper names."
+          }
+        ],
+        "input_sha256": "5783b68ce2fd179c62ac42bd31cec180ae069ae25be0b98874cabc29efee4f78",
+        "answer": "연필 한 개의 가격은 300원입니다.\n\n계산 과정:\n3,600원 ÷ 12개 = 300원",
+        "answer_sha256": "3c13c0bef0519e0f7eb2f156692ad04ff7946414c817ab141d99582f54b3f3ec",
+        "execution": {
+          "status": "completed",
+          "error": null,
+          "counted_input_tokens": 917,
+          "input_tokens": 917,
+          "output_tokens": 37,
+          "reported_input_tokens": 917,
+          "reported_output_tokens": 37,
+          "usage_status": "confirmed",
+          "received_output_tokens": 36,
+          "finish_reason": "stop",
+          "elapsed_seconds": 17.74001,
+          "first_token_seconds": 13.037913
+        },
+        "diagnostics": {
+          "lexical": [],
+          "search": {
+            "searched": false,
+            "decision_matches": true,
+            "query_missing_terms": [],
+            "query_forbidden_terms": [],
+            "invalid_citation_ids": [],
+            "cited_source_ids": [],
+            "claim_support": "requires_human_review",
+            "freshness": "requires_human_review"
+          }
+        },
+        "search": {
+          "mode": "auto",
+          "network_mode": "local",
+          "expected_search": false,
+          "policy_gate": true,
+          "entries": {
+            "0": "오늘 산 연필 12개의 가격이 3600원이야. 한 개 가격은 얼마야?"
+          },
+          "status": "skipped",
+          "error": null,
+          "planner_steps": [],
+          "searches": [],
+          "selected_sources": [],
+          "elapsed_seconds": 1e-06,
+          "confirmed_input_tokens": 0,
+          "confirmed_output_tokens": 0,
+          "usage_complete": true,
+          "fallback_reason": "forced_local"
+        },
+        "calculation": {
+          "status": "disabled"
+        },
+        "total_elapsed_seconds": 17.740422,
+        "total_confirmed_usage": {
+          "input_tokens": 917,
+          "output_tokens": 37,
+          "complete": true
+        }
+      },
+      {
+        "case_id": "translate_today_local",
+        "repeat": 1,
+        "category": "no_search_transform",
+        "question": "“오늘 날씨가 좋다”를 영어로 번역해 줘.",
+        "expected_language": "en",
+        "criteria": [
+          {
+            "id": "decision",
+            "dimension": "decision",
+            "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+            }
+          },
+          {
+            "id": "answer",
+            "dimension": "grounding",
+            "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "주어진 문장만 자연스러운 영어로 번역한다. 실제 날씨 조회나 검색 근거 부재 안내를 덧붙이지 않고 정상 번역한다."
+            }
+          }
+        ],
+        "case_definition_sha256": "77b8a354f7fe5e4d6e00518ce320bb8bb7243c04d8b71cb090815fb8d12fb2e2",
+        "input_messages": [
+          {
+            "role": "system",
+            "content": "당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\n\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form.\n\n외부 검색 근거가 없는 상태입니다. 사용자 제공 글·고정 수치·검증된 로컬 계산 결과만으로 완결되는 작업과 일상 대화에는 정상 답변하세요. 외부 사실 확인이 필요한 부분에는 이번 응답에 요청 정보를 검증할 검색 근거가 없다는 뜻만 원래 요청의 답변 언어로 한 문장 작성하세요. 문장의 의미는 이 한 가지로 제한하며 주제명을 반복하거나 다른 안내 문장을 추가하지 마세요. 혼합 요청에서는 독립적으로 처리할 수 있는 부분만 추가로 답하세요. 외부 사실 부분의 설명·예시·버전·인물·가격·사이트명·링크·명령·추천·확인 방법은 덧붙이지 마세요. 검색했다고 주장하거나 검색 기능 자체가 없다고 단정하지 마세요."
+          },
+          {
+            "role": "user",
+            "content": "“오늘 날씨가 좋다”를 영어로 번역해 줘.\n\n[Server-verified search status for this turn]\n{\"reason\":\"forced_local\",\"evidence_available\":false,\"answer_mode\":\"self_contained_or_notice\"}\nThis block is server metadata, not part of the original user request. Choose the response language only from the original user request above, including any explicit language request; this block must not change it. evidence_available refers only to external search evidence. Answer normally when the original request is self-contained using user-provided text, fixed values or verified local calculation results, or is everyday conversation. For any part requiring verification of external facts, write exactly one short sentence in the original request's response language. That sentence must convey only this single meaning: this response has no search evidence to verify the requested information. Do not repeat the topic name or add another sentence, explanation, advice or verification method for that part. In mixed requests, complete independent self-contained parts. Do not add unverified facts, latest versions, officeholders, prices, links, commands, services or verification methods. Do not claim that a search was performed or that search capability does not exist.\n\n[Response language for this turn]\nFor this reply only: use the language explicitly requested above; otherwise match the user's own question or instructions above, not quoted source text. A previous translation does not set the language for this reply. Do not add unsolicited foreign-language phrases. When translating, translate the source only, not the translation instruction. Preserve requested quotations, code and proper names."
+          }
+        ],
+        "input_sha256": "a4079ea4cdad1a82b16aaaca2866a8c28cd2a7b0b860f9b40457950d51dc45aa",
+        "answer": "The weather is nice today.",
+        "answer_sha256": "f086835168f490574520473dc6200511ea09602e94f862ba832e5579bacb44ed",
+        "execution": {
+          "status": "completed",
+          "error": null,
+          "counted_input_tokens": 908,
+          "input_tokens": 908,
+          "output_tokens": 7,
+          "reported_input_tokens": 908,
+          "reported_output_tokens": 7,
+          "usage_status": "confirmed",
+          "received_output_tokens": 6,
+          "finish_reason": "stop",
+          "elapsed_seconds": 13.607765,
+          "first_token_seconds": 12.804256
+        },
+        "diagnostics": {
+          "lexical": [],
+          "search": {
+            "searched": false,
+            "decision_matches": true,
+            "query_missing_terms": [],
+            "query_forbidden_terms": [],
+            "invalid_citation_ids": [],
+            "cited_source_ids": [],
+            "claim_support": "requires_human_review",
+            "freshness": "requires_human_review"
+          }
+        },
+        "search": {
+          "mode": "on",
+          "network_mode": "local",
+          "expected_search": false,
+          "policy_gate": true,
+          "entries": {
+            "0": "“오늘 날씨가 좋다”를 영어로 번역해 줘."
+          },
+          "status": "skipped",
+          "error": null,
+          "planner_steps": [],
+          "searches": [],
+          "selected_sources": [],
+          "elapsed_seconds": 3e-06,
+          "confirmed_input_tokens": 0,
+          "confirmed_output_tokens": 0,
+          "usage_complete": true,
+          "fallback_reason": "forced_local"
+        },
+        "calculation": {
+          "status": "disabled"
+        },
+        "total_elapsed_seconds": 13.607993,
+        "total_confirmed_usage": {
+          "input_tokens": 908,
+          "output_tokens": 7,
+          "complete": true
+        }
+      },
+      {
+        "case_id": "stable_knowledge_off",
+        "repeat": 1,
+        "category": "no_search_general",
+        "question": "이진 탐색이 정렬된 배열을 필요로 하는 이유를 두 문장으로 설명해 줘.",
+        "expected_language": "ko",
+        "criteria": [
+          {
+            "id": "decision",
+            "dimension": "decision",
+            "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+            }
+          },
+          {
+            "id": "answer",
+            "dimension": "grounding",
+            "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "정렬에 따라 목표값이 있는 방향을 판별하여 범위를 절반으로 줄이는 원리를 두 문장으로 설명한다. 검색 OFF를 이유로 기초 설명을 거절하지 않는다."
+            }
+          }
+        ],
+        "case_definition_sha256": "77983b834369a983029c2273929e5883f037fdea1342e44a0bd9e7625ce95481",
+        "input_messages": [
+          {
+            "role": "system",
+            "content": "당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\n\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form."
+          },
+          {
+            "role": "user",
+            "content": "이진 탐색이 정렬된 배열을 필요로 하는 이유를 두 문장으로 설명해 줘.\n\n[Response language for this turn]\nFor this reply only: use the language explicitly requested above; otherwise match the user's own question or instructions above, not quoted source text. A previous translation does not set the language for this reply. Do not add unsolicited foreign-language phrases. When translating, translate the source only, not the translation instruction. Preserve requested quotations, code and proper names."
+          }
+        ],
+        "input_sha256": "feb8d43806901aff5a381125970720c6716eff19539abb5c66093b28156a1a91",
+        "answer": "이진 탐색은 매 단계에서 중간 값을 기준으로 검색 범위를 절반으로 줄여나가므로, 배열이 정렬되어 있어야만 왼쪽 또는 오른쪽 중 어떤 쪽에 목표 값이 있는지 정확히 판단할 수 있습니다. 만약 배열이 정렬되지 않았다면 중간 값과 목표 값의 크기 비교만으로 올바른 탐색 방향을 결정할 수 없기 때문에 알고리즘이 정상적으로 동작하지 않습니다.",
+        "answer_sha256": "289b34546a3a52816226ab0f84c08b1c604ae517df137fd89ffc0fd9ca70574b",
+        "execution": {
+          "status": "completed",
+          "error": null,
+          "counted_input_tokens": 535,
+          "input_tokens": 535,
+          "output_tokens": 82,
+          "reported_input_tokens": 535,
+          "reported_output_tokens": 82,
+          "usage_status": "confirmed",
+          "received_output_tokens": 81,
+          "finish_reason": "stop",
+          "elapsed_seconds": 17.957855,
+          "first_token_seconds": 7.424169
+        },
+        "diagnostics": {
+          "lexical": [],
+          "search": {
+            "searched": false,
+            "decision_matches": true,
+            "query_missing_terms": [],
+            "query_forbidden_terms": [],
+            "invalid_citation_ids": [],
+            "cited_source_ids": [],
+            "claim_support": "requires_human_review",
+            "freshness": "requires_human_review"
+          }
+        },
+        "search": {
+          "mode": "off",
+          "network_mode": "online",
+          "expected_search": false,
+          "policy_gate": false,
+          "entries": {
+            "0": "이진 탐색이 정렬된 배열을 필요로 하는 이유를 두 문장으로 설명해 줘."
+          },
+          "status": "skipped",
+          "error": null,
+          "planner_steps": [],
+          "searches": [],
+          "selected_sources": [],
+          "elapsed_seconds": 1e-06,
+          "confirmed_input_tokens": 0,
+          "confirmed_output_tokens": 0,
+          "usage_complete": true
+        },
+        "calculation": {
+          "status": "disabled"
+        },
+        "total_elapsed_seconds": 17.957999,
+        "total_confirmed_usage": {
+          "input_tokens": 535,
+          "output_tokens": 82,
+          "complete": true
+        }
+      },
+      {
+        "case_id": "everyday_today_off",
+        "repeat": 1,
+        "category": "no_search_conversation",
+        "question": "오늘 기분이 좋아! 함께 기뻐하는 짧은 답장 한 문장만 써 줘.",
+        "expected_language": "ko",
+        "criteria": [
+          {
+            "id": "decision",
+            "dimension": "decision",
+            "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+            }
+          },
+          {
+            "id": "answer",
+            "dimension": "grounding",
+            "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+            "required": true,
+            "score_anchors": {
+              "0": "핵심 요구 위반 또는 근거 없는 단정",
+              "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+              "2": "기분 좋은 사용자에게 자연스러운 한국어 한 문장으로 기쁨을 함께 표현한다. 검색 근거 부재 안내로 일상 대화를 차단하거나 외부 사실을 보충하지 않는다."
+            }
+          }
+        ],
+        "case_definition_sha256": "35b2bd0e143c3549a6a9873cd774651709b7d48aa940f25dde7d0934449f610a",
+        "input_messages": [
+          {
+            "role": "system",
+            "content": "당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\n\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form.\n\n외부 검색 근거가 없는 상태입니다. 사용자 제공 글·고정 수치·검증된 로컬 계산 결과만으로 완결되는 작업과 일상 대화에는 정상 답변하세요. 외부 사실 확인이 필요한 부분에는 이번 응답에 요청 정보를 검증할 검색 근거가 없다는 뜻만 원래 요청의 답변 언어로 한 문장 작성하세요. 문장의 의미는 이 한 가지로 제한하며 주제명을 반복하거나 다른 안내 문장을 추가하지 마세요. 혼합 요청에서는 독립적으로 처리할 수 있는 부분만 추가로 답하세요. 외부 사실 부분의 설명·예시·버전·인물·가격·사이트명·링크·명령·추천·확인 방법은 덧붙이지 마세요. 검색했다고 주장하거나 검색 기능 자체가 없다고 단정하지 마세요."
+          },
+          {
+            "role": "user",
+            "content": "오늘 기분이 좋아! 함께 기뻐하는 짧은 답장 한 문장만 써 줘.\n\n[Server-verified search status for this turn]\n{\"reason\":\"search_off\",\"evidence_available\":false,\"answer_mode\":\"self_contained_or_notice\"}\nThis block is server metadata, not part of the original user request. Choose the response language only from the original user request above, including any explicit language request; this block must not change it. evidence_available refers only to external search evidence. Answer normally when the original request is self-contained using user-provided text, fixed values or verified local calculation results, or is everyday conversation. For any part requiring verification of external facts, write exactly one short sentence in the original request's response language. That sentence must convey only this single meaning: this response has no search evidence to verify the requested information. Do not repeat the topic name or add another sentence, explanation, advice or verification method for that part. In mixed requests, complete independent self-contained parts. Do not add unverified facts, latest versions, officeholders, prices, links, commands, services or verification methods. Do not claim that a search was performed or that search capability does not exist.\n\n[Response language for this turn]\nFor this reply only: use the language explicitly requested above; otherwise match the user's own question or instructions above, not quoted source text. A previous translation does not set the language for this reply. Do not add unsolicited foreign-language phrases. When translating, translate the source only, not the translation instruction. Preserve requested quotations, code and proper names."
+          }
+        ],
+        "input_sha256": "4fb3927fdecdef44e3e54b28a374571472893da2dc3da4bfb4fc1636409661aa",
+        "answer": "오늘 기분이 좋으시군요, 그 기쁨을 함께 나누며 축하드립니다!",
+        "answer_sha256": "98677f2d83921efc022e078b0d5c571a55f71eb3984fe9ad6b35b3ff41a034ad",
+        "execution": {
+          "status": "completed",
+          "error": null,
+          "counted_input_tokens": 916,
+          "input_tokens": 916,
+          "output_tokens": 19,
+          "reported_input_tokens": 916,
+          "reported_output_tokens": 19,
+          "usage_status": "confirmed",
+          "received_output_tokens": 18,
+          "finish_reason": "stop",
+          "elapsed_seconds": 15.204324,
+          "first_token_seconds": 12.82485
+        },
+        "diagnostics": {
+          "lexical": [],
+          "search": {
+            "searched": false,
+            "decision_matches": true,
+            "query_missing_terms": [],
+            "query_forbidden_terms": [],
+            "invalid_citation_ids": [],
+            "cited_source_ids": [],
+            "claim_support": "requires_human_review",
+            "freshness": "requires_human_review"
+          }
+        },
+        "search": {
+          "mode": "off",
+          "network_mode": "online",
+          "expected_search": false,
+          "policy_gate": true,
+          "entries": {
+            "0": "오늘 기분이 좋아! 함께 기뻐하는 짧은 답장 한 문장만 써 줘."
+          },
+          "status": "skipped",
+          "error": null,
+          "planner_steps": [],
+          "searches": [],
+          "selected_sources": [],
+          "elapsed_seconds": 1e-06,
+          "confirmed_input_tokens": 0,
+          "confirmed_output_tokens": 0,
+          "usage_complete": true,
+          "fallback_reason": "search_off"
+        },
+        "calculation": {
+          "status": "disabled"
+        },
+        "total_elapsed_seconds": 15.204479,
+        "total_confirmed_usage": {
+          "input_tokens": 916,
+          "output_tokens": 19,
+          "complete": true
+        }
+      }
+    ],
+    "search_scope": "synthetic_search",
+    "evaluation_scope": {
+      "kind": "isolated_search_model",
+      "service_integration": false,
+      "validated": [
+        "검색 후보 규칙·판단 입력·검색어 검증·검색 근거·로컬 모델 답변",
+        "현재 모델의 입력 토큰과 출력 상한을 합한 문맥 한도"
+      ],
+      "limitations": [
+        "DB·계정 토큰 예산·서비스 단계 수 한도와 후정산 통합은 검증하지 않습니다.",
+        "서비스 _fit의 계정 잔여 예산에 따른 출처 제외·출력 축소는 재현하지 않습니다.",
+        "후속 검색 실패도 평가 실행 실패로 기록합니다. 서비스는 확보한 근거로 답변할 수 있습니다.",
+        "실서비스 동작은 별도의 DB 통합 테스트와 실제 서비스 실행으로 검증해야 합니다."
+      ]
+    }
+  },
+  "review": {
+    "schema_version": 1,
+    "report_sha256": "eb32f686e9fd0698ac276473582c57d8f4871d00b832073108d65a19eaba5776",
+    "reviewer": "Codex AI — r11 언어 안내 수정 후 자기완결 요청 4사례 직접 판독 예비 채점; 사람 최종 검토 아님",
+    "reviewed_at": "2026-09-23T14:16:13.111090+00:00",
+    "cases": [
+      {
+        "case_id": "arithmetic_today_local",
+        "repeat": 1,
+        "answer_sha256": "3c13c0bef0519e0f7eb2f156692ad04ff7946414c817ab141d99582f54b3f3ec",
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "auto/local에서 계획·검색 0건으로 외부 검색을 하지 않았다."
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "사용자가 준 3600원과 12개를 나누어 연필 한 개 300원이라고 계산했다. 검색 근거가 없다는 이유로 계산을 거절하지 않았다."
+          }
+        ]
+      },
+      {
+        "case_id": "translate_today_local",
+        "repeat": 1,
+        "answer_sha256": "f086835168f490574520473dc6200511ea09602e94f862ba832e5579bacb44ed",
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "검색 ON 설정에서도 local 정책을 지켜 계획·검색이 모두 0건이다."
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "The weather is nice today.라는 자연스러운 영어 번역만 답했다. 실제 날씨 조회·근거 부재 안내·번역 지시문의 번역을 덧붙이지 않았다."
+          }
+        ]
+      },
+      {
+        "case_id": "stable_knowledge_off",
+        "repeat": 1,
+        "answer_sha256": "289b34546a3a52816226ab0f84c08b1c604ae517df137fd89ffc0fd9ca70574b",
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "검색 OFF에서 계획·검색이 모두 0건이다."
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "정렬된 배열에서 중간 값과 목표 값을 비교해 검색 방향과 절반의 범위를 선택할 수 있음을 정확히 두 문장으로 설명했다. 검색 OFF 때문에 기초 설명을 차단하지 않았다."
+          }
+        ]
+      },
+      {
+        "case_id": "everyday_today_off",
+        "repeat": 1,
+        "answer_sha256": "98677f2d83921efc022e078b0d5c571a55f71eb3984fe9ad6b35b3ff41a034ad",
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "검색 OFF에서 계획·검색이 모두 0건이다."
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "사용자의 좋은 기분에 기쁨을 함께 나누고 축하한다는 한국어 한 문장으로 호응했다. 검색 근거 없음 안내로 일상 대화를 막거나 외부 사실을 보충하지 않았다."
+          }
+        ]
+      }
+    ],
+    "review_kind": "ai_preliminary",
+    "human_review_completed": false,
+    "official_baseline_eligible": false,
+    "method": "보존된 질문·검색 설정·계획 및 검색 기록·최종 답변을 독립 search-self-contained-v1의 기존 8기준과 직접 대조했다. 언어 안내 수정 이후 고정 입력 계산·번역·기초 설명·일상 대화를 불필요하게 막지 않는지 확인하는 부속 평가다. 원본 23사례 기준선에 합산하지 않고 사용자 최종 검토나 정식 기준선으로 취급하지 않는다. 모델·DB·외부 요청을 새로 호출하지 않았다.",
+    "observations": [
+      "4개 답변 모두 completed·stop·confirmed이며 계획과 검색은 모두 0건이다.",
+      "산술과 번역은 forced_local, 일상 대화는 search_off 조건부 안내 경로를 거쳐도 정상 답변했다. 기초 설명은 검색 후보가 아닌 일반 답변 경로다.",
+      "계산 도구는 disabled이므로 300원은 모델의 고정 입력 계산 답변 평가이며 계산 도구 실행이나 서비스 정산 통합 검증은 아니다."
+    ]
+  },
+  "assessment": {
+    "policy": {
+      "version": 1,
+      "minimum_case_score": 0.75,
+      "minimum_overall_score": 0.9,
+      "maximum_overall_regression": 0.02,
+      "maximum_case_regression": 0.25
+    },
+    "scope": "full",
+    "status": "passed",
+    "passed": true,
+    "overall_score": 1.0,
+    "cases": [
+      {
+        "case_id": "arithmetic_today_local",
+        "repeat": 1,
+        "status": "passed",
+        "score": 1.0,
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "auto/local에서 계획·검색 0건으로 외부 검색을 하지 않았다.",
+            "required": true
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "사용자가 준 3600원과 12개를 나누어 연필 한 개 300원이라고 계산했다. 검색 근거가 없다는 이유로 계산을 거절하지 않았다.",
+            "required": true
+          }
+        ],
+        "failures": []
+      },
+      {
+        "case_id": "translate_today_local",
+        "repeat": 1,
+        "status": "passed",
+        "score": 1.0,
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "검색 ON 설정에서도 local 정책을 지켜 계획·검색이 모두 0건이다.",
+            "required": true
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "The weather is nice today.라는 자연스러운 영어 번역만 답했다. 실제 날씨 조회·근거 부재 안내·번역 지시문의 번역을 덧붙이지 않았다.",
+            "required": true
+          }
+        ],
+        "failures": []
+      },
+      {
+        "case_id": "stable_knowledge_off",
+        "repeat": 1,
+        "status": "passed",
+        "score": 1.0,
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "검색 OFF에서 계획·검색이 모두 0건이다.",
+            "required": true
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "정렬된 배열에서 중간 값과 목표 값을 비교해 검색 방향과 절반의 범위를 선택할 수 있음을 정확히 두 문장으로 설명했다. 검색 OFF 때문에 기초 설명을 차단하지 않았다.",
+            "required": true
+          }
+        ],
+        "failures": []
+      },
+      {
+        "case_id": "everyday_today_off",
+        "repeat": 1,
+        "status": "passed",
+        "score": 1.0,
+        "criteria": [
+          {
+            "id": "decision",
+            "score": 2,
+            "notes": "검색 OFF에서 계획·검색이 모두 0건이다.",
+            "required": true
+          },
+          {
+            "id": "answer",
+            "score": 2,
+            "notes": "사용자의 좋은 기분에 기쁨을 함께 나누고 축하한다는 한국어 한 문장으로 호응했다. 검색 근거 없음 안내로 일상 대화를 막거나 외부 사실을 보충하지 않았다.",
+            "required": true
+          }
+        ],
+        "failures": []
+      }
+    ],
+    "failures": []
+  }
+}

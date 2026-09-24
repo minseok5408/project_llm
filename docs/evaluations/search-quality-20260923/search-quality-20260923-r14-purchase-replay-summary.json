@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "recorded_evidence_replay_ai_preliminary_summary",
+  "review_kind": "ai_preliminary",
+  "human_review_completed": false,
+  "official_baseline_eligible": false,
+  "run_id": "1cd08181-5670-4ba1-9520-9aa58a9fc200",
+  "created_at": "2026-09-23T14:38:59.824307+00:00",
+  "reviewed_at": "2026-09-23T14:42:40.889842+00:00",
+  "search_scope": "synthetic_search",
+  "dataset_id": "search-recorded-purchase-20260923-v1",
+  "dataset_sha256": "de346b46ae67a2fbea3741c964bfeca11fa2e27d2c7a786cbe0901417f1d8220",
+  "local_artifacts": {
+    "search-quality-20260923-r14-purchase-replay.json": {
+      "file_sha256": "eb5e33d583ba92981314b2d0a8c001c88419f75be80904267fffd711a47e8c2b",
+      "canonical_sha256": "eb67fc5302a5fef1fb55c28c920d71884914fa804e5732bce4f806e05bb13f28"
+    },
+    "search-quality-20260923-r14-purchase-replay-ai-review.json": {
+      "file_sha256": "e8609c7d058ccc327d232de1ef8c622dce7397e4c88ef3773d174e848b860974",
+      "canonical_sha256": "719e34b021670c0c138f73d0f727d6a491e9183972a59f308ba31c4764f09001"
+    },
+    "search-quality-20260923-r14-purchase-replay-ai.json": {
+      "file_sha256": "7ad8d6260ded9851694bcea4b087fd036eb031e9db40567f4851a7e0078a0630",
+      "canonical_sha256": "e4bec360cc71842f029c0957d2363153afe65c80840b286953cbcd85c4d04cb9"
+    }
+  },
+  "recorded_evidence_proof": {
+    "original_run_id": "1f570b65-c09f-403c-b4d2-69d40e0c91dd",
+    "original_case_id": "purchase_recommendation",
+    "selected_sources_identical": true,
+    "selected_sources_canonical_sha256": "794d40b297d5c9d2d620cf04fb4a7161aaa60c01c81af06bc17339e33f695abc"
+  },
+  "configuration": {
+    "local_calculation": false,
+    "model": "mlx-community/Qwen3.8-27B-4bit",
+    "context_window": 32768,
+    "max_tokens": 1024,
+    "thinking": false,
+    "timeout_seconds": 240.0,
+    "max_input_chars": 200000,
+    "repeat": 1,
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5,
+      "repetition_penalty": 1.0,
+      "seed": null
+    },
+    "search": {
+      "agent_enabled": true,
+      "provider": "fixture",
+      "max_attempts": 2,
+      "max_results": 5,
+      "planning_max_tokens": 256,
+      "planning_thinking": false,
+      "planning_sampling": {
+        "temperature": 0.0,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 0.0,
+        "repetition_penalty": 1.0,
+        "seed": null
+      },
+      "max_query_chars": 500,
+      "max_context_chars": 12000,
+      "agent_timeout_seconds": 90.0
+    }
+  },
+  "implementation": {
+    "commit": "80984e0a20e194ee28bbe6fbebb07bbaa1bd194c",
+    "dirty": true,
+    "code_sha256": "3e0ba0fda0f4d66fe3411674d48b0160971ede1643a5b74ec9d20d7e2b68afec",
+    "prompt_policy_sha256": "e2c5a9d9bb0b2382ab9f2209f7db5868a70bd2da2ce61f617772dcfe841375b3",
+    "packages": {
+      "mlx-vlm": "0.6.17",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5"
+    },
+    "search_cli_sha256": "7e159d3f59f94e46c5b3b6a7dfba110810ee9aa096800508bea5142d3220a8a3"
+  },
+  "assessment": {
+    "policy": {
+      "version": 1,
+      "minimum_case_score": 0.75,
+      "minimum_overall_score": 0.9,
+      "maximum_overall_regression": 0.02,
+      "maximum_case_regression": 0.25
+    },
+    "scope": "full",
+    "status": "passed",
+    "passed": true,
+    "overall_score": 1.0,
+    "failures": []
+  },
+  "observations": [
+    "예산을 상한으로 해석하여 130만원대 LOQ를 150만원 안의 후보로 선택했다. 일반 편집 권장사항만 있는 HP나 디스플레이 근거가 없는 MSI로 후보를 늘리지 않았다.",
+    "LOQ 모델명·130만원대·sRGB100%·라이젠7 250·RTX5060 100W·2.4kg 및 거치 위주 사용 설명은 모두 실제 출처 4에 있다. 다른 제품의 사양 또는 가격을 옮기지 않았다.",
+    "191 확정 출력 토큰, stop으로 끝나 이번 재생에서는 미완성 출력·과도한 후보 나열이 발생하지 않았다. 이전 replay와 동일한 자료를 사용하지만 새 실제 검색 성공이나 일반적인 성능 개선을 보장하는 결과는 아니다.",
+    "사진 편집에 충분한 성능이라는 문구는 근거의 입문용 편집·색역·하드웨어 사양을 바탕으로 한 추천 판단으로 판독했다. 특정 프로그램·고해상도 작업 전체의 벤치마크나 모든 사진 작업의 성능을 검증한 것은 아니며 이 일반 표현의 범위는 주의할 부분이다."
+  ],
+  "limitations": [
+    "DB·계정 토큰 예산·서비스 단계 수 한도와 후정산 통합은 검증하지 않습니다.",
+    "서비스 _fit의 계정 잔여 예산에 따른 출처 제외·출력 축소는 재현하지 않습니다.",
+    "후속 검색 실패도 평가 실행 실패로 기록합니다. 서비스는 확보한 근거로 답변할 수 있습니다.",
+    "실서비스 동작은 별도의 DB 통합 테스트와 실제 서비스 실행으로 검증해야 합니다.",
+    "full은 단일 구매 재생 fixture 전체를 뜻하며 원본 23사례 전체가 아니다.",
+    "이전 실제 검색 자료를 고정 재생했으므로 새 외부 검색 성공·현재 실제 가격의 독립 검증이 아니다.",
+    "원문 질문·답변·검색어·검색 요약 본문을 공유하지 않고 data/evaluations의 권한 0600 파일에만 보존한다.",
+    "r11 실제 검색과 소스·평가 범위가 달라 성능 동등 비교나 정식 기준선 비교가 아니다. 같은 선택 자료에 대한 근거 해석·완결성 관찰이다."
+  ],
+  "cases": [
+    {
+      "case_id": "purchase_recommendation_replay",
+      "repeat": 1,
+      "status": "passed",
+      "score": 1.0,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "구매 추천 요청에 맞춰 고정 응답 검색을 1회 수행했다. 실제 외부 검색은 새로 호출하지 않은 재생이다."
+        },
+        {
+          "id": "answer",
+          "score": 2,
+          "notes": "130만원대 제품을 150만원 상한 안으로 정확히 판단하고 모델별 가격·색역·CPU/GPU·무게와 추천 이유를 연결했다. 제품 사양을 만들거나 일반 기준을 다른 제품의 확정 사양으로 붙이지 않았다."
+        },
+        {
+          "id": "query_scope",
+          "score": 2,
+          "notes": "사진 편집용 노트북 150만원이라는 대상·용도·예산을 보존하고 개인정보·관계없는 대화를 제외했다."
+        },
+        {
+          "id": "citations",
+          "score": 2,
+          "notes": "추천에 사용한 130만원대 가격·sRGB100%·라이젠7 250·RTX5060 100W·2.4kg과 거치 사용 설명이 [4]에 실제 있고 각 핵심 문장에 그 번호를 인용했다."
+        },
+        {
+          "id": "freshness",
+          "score": 2,
+          "notes": "제공된 자료의 가격대와 범위를 사용했으며 조회 시각으로 별도의 최신 판매가·할인·새 모델 상태를 단정하지 않았다. 날짜가 없는 다른 자료를 최신 가격의 보증으로 확장하지 않았다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 4638,
+        "input_tokens": 4638,
+        "output_tokens": 191,
+        "reported_input_tokens": 4638,
+        "reported_output_tokens": 191,
+        "usage_status": "confirmed",
+        "received_output_tokens": 190,
+        "finish_reason": "stop",
+        "elapsed_seconds": 87.715821,
+        "first_token_seconds": 62.68424
+      },
+      "total_elapsed_seconds": 157.399284,
+      "total_confirmed_usage": {
+        "input_tokens": 8936,
+        "output_tokens": 277,
+        "complete": true
+      },
+      "search": {
+        "status": "finished",
+        "elapsed_seconds": 69.682782,
+        "confirmed_input_tokens": 4298,
+        "confirmed_output_tokens": 86,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "external_search_count": 0,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 1039,
+          "input_tokens": 1039,
+          "output_tokens": 58,
+          "received_output_tokens": 57,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 21.789501
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "finish_search",
+          "reason": "sufficient",
+          "counted_input_tokens": 3259,
+          "input_tokens": 3259,
+          "output_tokens": 28,
+          "received_output_tokens": 27,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 47.892657
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://tilnote.io/pages/69acd7b369ab6ff5e73705af",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://prod.danawa.com/list?cate=11252750",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://sioni.tistory.com/46",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://m.blog.naver.com/choicemon/224243566983?targetKeyword=%EB%85%B8%ED%8A%B8%EB%B6%81%EC%B6%94%EC%B2%9C",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 5,
+          "url": "https://quasarzone.com/bbs/qf_nb/views/26677",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        }
+      ],
+      "input_sha256": "b7246bc7c27092ef003e085a7b0fdc43d8fc29c652d951075fd3b60facecbec0",
+      "answer_sha256": "fe55c2f84f54b3d75a2fb78fe358812d7af5295c499cb7b9887281f6129b9b50"
+    }
+  ]
+}

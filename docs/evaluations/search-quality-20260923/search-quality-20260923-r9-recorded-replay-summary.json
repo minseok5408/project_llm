@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "recorded_evidence_replay_ai_preliminary_summary",
+  "review_kind": "ai_preliminary",
+  "human_review_completed": false,
+  "official_baseline_eligible": false,
+  "run_id": "5baf045f-3109-47bd-97e0-017de22d2be5",
+  "created_at": "2026-09-23T13:52:51.698845+00:00",
+  "reviewed_at": "2026-09-23T13:57:58.030136+00:00",
+  "search_scope": "synthetic_search",
+  "dataset_id": "search-recorded-evidence-20260923-v1",
+  "dataset_sha256": "015726c04aa4532d3accefa91f25304eec82da83a58e7fc23285d0f9e88a4c49",
+  "local_artifacts": {
+    "search-quality-20260923-r9-recorded-replay.json": {
+      "file_sha256": "d92a9dd549088398fc54a2ae619291ebc09248995883b2fa9a08aa2caf7af2d2",
+      "canonical_sha256": "957409d7abc46da7556801de3fb0656f7b8780e20c9363820ab24f1e5e4c13b8"
+    },
+    "search-quality-20260923-r9-recorded-replay-ai-review.json": {
+      "file_sha256": "10dfdd4ed5c4a7d952e6ce7c8619761b7d7f21ff55e7d406ed76dcce28521f64",
+      "canonical_sha256": "b516a043dd48f77981f9e174b23fb0290fbce8c9d494d8d4b6c8b29c7631d7e4"
+    },
+    "search-quality-20260923-r9-recorded-replay-ai.json": {
+      "file_sha256": "7275aa72e02c61ee47da408cb336c81d92bfea9e474957bb05d54094467c6019",
+      "canonical_sha256": "a262f97c0efcf4bb44b48c9913b1dd032af731d475583c4bd349bec0b9e12256"
+    }
+  },
+  "recorded_evidence_proof": {
+    "original_run_id": "e3e74e39-e7bb-4786-9356-8865d9e813b2",
+    "original_case_id": "latest_python",
+    "selected_sources_identical": true,
+    "selected_sources_canonical_sha256": "0dacf925c4046fba2d2805255a40e442f5abbf7c09cd8a713bac72e4d44ae583"
+  },
+  "configuration": {
+    "local_calculation": false,
+    "model": "mlx-community/Qwen3.8-27B-4bit",
+    "context_window": 32768,
+    "max_tokens": 512,
+    "thinking": false,
+    "timeout_seconds": 120.0,
+    "max_input_chars": 200000,
+    "repeat": 1,
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5,
+      "repetition_penalty": 1.0,
+      "seed": null
+    },
+    "search": {
+      "agent_enabled": true,
+      "provider": "fixture",
+      "max_attempts": 2,
+      "max_results": 5,
+      "planning_max_tokens": 256,
+      "planning_thinking": false,
+      "planning_sampling": {
+        "temperature": 0.0,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 0.0,
+        "repetition_penalty": 1.0,
+        "seed": null
+      },
+      "max_query_chars": 500,
+      "max_context_chars": 12000,
+      "agent_timeout_seconds": 90.0
+    }
+  },
+  "implementation": {
+    "commit": "80984e0a20e194ee28bbe6fbebb07bbaa1bd194c",
+    "dirty": true,
+    "code_sha256": "de9f4a1bb29891bd4fe2ab81bfbaa710210ca311e26fb10c252536c68e42e2cc",
+    "prompt_policy_sha256": "e2c5a9d9bb0b2382ab9f2209f7db5868a70bd2da2ce61f617772dcfe841375b3",
+    "packages": {
+      "mlx-vlm": "0.6.17",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5"
+    },
+    "search_cli_sha256": "7e159d3f59f94e46c5b3b6a7dfba110810ee9aa096800508bea5142d3220a8a3"
+  },
+  "assessment": {
+    "policy": {
+      "version": 1,
+      "minimum_case_score": 0.75,
+      "minimum_overall_score": 0.9,
+      "maximum_overall_regression": 0.02,
+      "maximum_case_regression": 0.25
+    },
+    "scope": "full",
+    "status": "passed",
+    "passed": true,
+    "overall_score": 0.9,
+    "failures": []
+  },
+  "observations": [
+    "답변은 현재 최신 안정판을 확인할 수 없다는 결론으로 시작한다. 과거 공식 릴리스 목록의 첫 항목을 최신으로 단정하거나 학습 지식의 대체 버전을 추천하지 않았다.",
+    "끝의 직접 확인 안내는 실제 제공된 공식 출처 URL을 사용하므로 새 URL 또는 최신 버전 날조가 아니다. 다만 추가 확인 방법을 보충하지 말라는 해당 실행 지침을 완전히 따르지는 않았다. 고정 최신성 기준과 별도 관찰로 구분한다.",
+    "Foundry 지원 정책을 설명하는 부분의 직접 근거는 출처 2인데 문단에 출처 1과 4만 인용되어 부분 인용 누락이 있다.",
+    "검색 계획은 여전히 오래된 목록만 확보한 상태에서 sufficient로 종료했다. 고정 decision 기준은 실제 검색 수행 여부이므로 해당 점수는 계획의 충분성 판정까지 검증하는 의미가 아니다.",
+    "이 실행의 소스 해시는 추천 예산 근거 조건을 추가하기 전 버전이다. 검증 범위는 최신성·근거 입력 변경이며 후속 추천 규칙이나 최신 실제 검색 결과의 성공을 뜻하지 않는다."
+  ],
+  "limitations": [
+    "DB·계정 토큰 예산·서비스 단계 수 한도와 후정산 통합은 검증하지 않습니다.",
+    "서비스 _fit의 계정 잔여 예산에 따른 출처 제외·출력 축소는 재현하지 않습니다.",
+    "후속 검색 실패도 평가 실행 실패로 기록합니다. 서비스는 확보한 근거로 답변할 수 있습니다.",
+    "실서비스 동작은 별도의 DB 통합 테스트와 실제 서비스 실행으로 검증해야 합니다.",
+    "full은 독립 재생 fixture 1사례 전체를 뜻하며 원본 23사례 전체가 아니다.",
+    "실제 공급자에서 이전에 받은 자료를 고정 재생했다. 현재 외부 검색 성공이나 사실을 새 웹 조회로 독립 검증하지 않았다.",
+    "원문 질문·답변·검색어·검색 요약 본문은 공유하지 않으며 원본과 AI 채점은 data/evaluations 권한 0600 로컬 파일에만 보존한다.",
+    "소스·fixture·검색 범위가 다른 r8-live와 수치 점수를 공식 비교하는 결과가 아니다. 같은 선택 자료에 대한 오류 재현 및 수정 관찰이다."
+  ],
+  "cases": [
+    {
+      "case_id": "latest_python_archive_replay",
+      "repeat": 1,
+      "status": "passed",
+      "score": 0.9,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "검색 필요성에 맞춰 고정 응답 검색을 1회 수행했다. 실제 외부 요청은 없었으며 재생 fixture를 사용했다."
+        },
+        {
+          "id": "answer",
+          "score": 2,
+          "notes": "현재 최신 안정판을 확인할 직접 근거가 없다고 먼저 밝혔다. 과거 릴리스 목록·2025년 자료의 한계를 설명하고 자료에 없는 최신 버전이나 사전 출시판을 안정판으로 제시하지 않았다."
+        },
+        {
+          "id": "query_scope",
+          "score": 2,
+          "notes": "짧은 검색어에 Python·최신·안정판·버전이라는 대상과 조건을 보존하고 명령문·개인정보·관계없는 대화를 제외했다. 공식 출처의 사용 여부는 실제 선택 근거와 답변에서 확인했다."
+        },
+        {
+          "id": "citations",
+          "score": 1,
+          "notes": "과거 공식 릴리스 목록과 2025년 버전 상태는 인용한 1·4와 맞는다. 그러나 함께 언급한 Foundry 지원 정책의 직접 근거는 2인데 해당 번호를 인용하지 않았다. 끝의 공식 URL은 제공된 1과 일치해 출처 날조는 아니다."
+        },
+        {
+          "id": "freshness",
+          "score": 2,
+          "notes": "2020년 목록과 2025년 상태를 2026년 9월 최신 안정판의 직접 근거로 볼 수 없다고 명확히 구분했다. 조회 시각·첫 목록 항목·최대 버전만으로 최신을 단정하지 않았다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 4199,
+        "input_tokens": 4199,
+        "output_tokens": 121,
+        "reported_input_tokens": 4199,
+        "reported_output_tokens": 121,
+        "usage_status": "confirmed",
+        "received_output_tokens": 120,
+        "finish_reason": "stop",
+        "elapsed_seconds": 72.858278,
+        "first_token_seconds": 56.96313
+      },
+      "total_elapsed_seconds": 137.92903,
+      "total_confirmed_usage": {
+        "input_tokens": 8326,
+        "output_tokens": 193,
+        "complete": true
+      },
+      "search": {
+        "status": "finished",
+        "elapsed_seconds": 65.069367,
+        "confirmed_input_tokens": 4127,
+        "confirmed_output_tokens": 72,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "external_search_count": 0,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 1034,
+          "input_tokens": 1034,
+          "output_tokens": 44,
+          "received_output_tokens": 43,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 19.924715
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "finish_search",
+          "reason": "sufficient",
+          "counted_input_tokens": 3093,
+          "input_tokens": 3093,
+          "output_tokens": 28,
+          "received_output_tokens": 27,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 45.144184
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://www.python.org/downloads",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://www.palantir.com/docs/kr/foundry/transforms-python/python-versions",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://inmonim.github.io/posts/python_%EC%97%B0%EB%8C%80%EA%B8%B0",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://www.whatwant.com/entry/Python-Version",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 5,
+          "url": "https://tiptechtoe.tistory.com/entry/Python-version-characteristics",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        }
+      ],
+      "input_sha256": "ebc262a30969defc1ec182250ba7a9af9687ea62d5ceaa9950889f8df9b39c55",
+      "answer_sha256": "7080c761afadfac9cbfaa3756906440efebb1aa0bd7893f5ff29f704e3dd0009"
+    }
+  ]
+}

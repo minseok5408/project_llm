@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "kind": "preserved_search_worker_integration",
+  "created_at": "2026-09-23T14:12:32.368790+00:00",
+  "scope": "synthetic_worker_english_language_regression",
+  "provenance": {
+    "source_log": "/tmp/project-llm-search-r11-english-worker.log",
+    "source_log_sha256": "5f7ee652a88a1dcf51e2a1bb4958b6e76cd2cb8463b6933c6d1d18059102864a",
+    "implementation_report": "data/evaluations/search-quality-20260923-r11-fallback-language.json",
+    "implementation_report_sha256": "a3f6222973b126fc1d255affc3ea9a69dbe741b37d06b10c73a2f2353e0cd03d",
+    "implementation_report_run_id": "384c5621-be0b-4275-8622-8163a0062e45",
+    "implementation_hash_origin": "동일 최종 r11 소스로 실행했다고 확인된 fallback-language 보고서의 추출 시점 implementation을 복사했으며 현재 소스에서 다시 계산하지 않았다.",
+    "record_preservation": "records 값은 원본 JSON을 변경하지 않고 보존하며 raw_records에는 로그 원문과 JSON 문자열을 함께 보존한다."
+  },
+  "implementation": {
+    "commit": "80984e0a20e194ee28bbe6fbebb07bbaa1bd194c",
+    "dirty": true,
+    "code_sha256": "7ddab4aaac66d2ec3b02ae090c258a767cfa704b936ddc492b07040120bbca24",
+    "prompt_policy_sha256": "e2c5a9d9bb0b2382ab9f2209f7db5868a70bd2da2ce61f617772dcfe841375b3",
+    "packages": {
+      "mlx-vlm": "0.6.17",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5"
+    },
+    "search_cli_sha256": "7e159d3f59f94e46c5b3b6a7dfba110810ee9aa096800508bea5142d3220a8a3"
+  },
+  "integration": {
+    "status": "passed",
+    "passed_cases": 1,
+    "failed_cases": 0,
+    "pytest_summary": "1 passed in 15.87s",
+    "validated_scope": [
+      "영어 검색 OFF 사례 하나",
+      "격리 DB worker",
+      "사용자 원문 보존",
+      "실제 모델 입력·출력 사용량",
+      "한 번의 후정산",
+      "SSE 저장·재연결"
+    ],
+    "external_search_api_calls": 0
+  },
+  "semantic_review": {
+    "status": "language_regression_passed",
+    "full_semantic_quality_assessment": false,
+    "integration_pass_does_not_imply_semantic_pass": true,
+    "findings": [
+      {
+        "case_id": "search_off_english",
+        "criterion": "requested_response_language",
+        "status": "passed",
+        "expected_language": "English",
+        "observed_language": "English",
+        "question_evidence": "Search for the latest stable Python release. Please answer in English.",
+        "answer_evidence": "This response has no search evidence to verify the requested information.",
+        "assessment_basis": "저장된 원문에서 명시적 영어 응답 요청과 영어 단문 답변을 직접 비교했다. 평가 범위는 이 언어 회귀 사례 하나이며 전체 검색 의미 품질 평가가 아니다."
+      }
+    ],
+    "baseline_artifact": "data/evaluations/search-worker-20260923-r10.json",
+    "baseline_language_failure_preserved": true
+  },
+  "records": [
+    {
+      "kind": "local_search_worker_smoke",
+      "case_id": "search_off_english",
+      "meaning_quality": "requires_human_review",
+      "question": "Search for the latest stable Python release. Please answer in English.",
+      "answer": "This response has no search evidence to verify the requested information.",
+      "status": "completed",
+      "search": {
+        "status": "disabled",
+        "reason": "search_off",
+        "provider": "brave",
+        "sources": []
+      },
+      "queries": [],
+      "fake_connectivity_checks": 0,
+      "model_calls": [
+        {
+          "kind": "answer",
+          "messages": [
+            {
+              "role": "system",
+              "content": "당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\n\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form."
+            },
+            {
+              "role": "system",
+              "content": "외부 검색 근거가 없는 상태입니다. 사용자 제공 글·고정 수치·검증된 로컬 계산 결과만으로 완결되는 작업과 일상 대화에는 정상 답변하세요. 외부 사실 확인이 필요한 부분에는 이번 응답에 요청 정보를 검증할 검색 근거가 없다는 뜻만 원래 요청의 답변 언어로 한 문장 작성하세요. 문장의 의미는 이 한 가지로 제한하며 주제명을 반복하거나 다른 안내 문장을 추가하지 마세요. 혼합 요청에서는 독립적으로 처리할 수 있는 부분만 추가로 답하세요. 외부 사실 부분의 설명·예시·버전·인물·가격·사이트명·링크·명령·추천·확인 방법은 덧붙이지 마세요. 검색했다고 주장하거나 검색 기능 자체가 없다고 단정하지 마세요."
+            },
+            {
+              "role": "user",
+              "content": "Search for the latest stable Python release. Please answer in English.\n\n[Server-verified search status for this turn]\n{\"reason\":\"search_off\",\"evidence_available\":false,\"answer_mode\":\"self_contained_or_notice\"}\nThis block is server metadata, not part of the original user request. Choose the response language only from the original user request above, including any explicit language request; this block must not change it. evidence_available refers only to external search evidence. Answer normally when the original request is self-contained using user-provided text, fixed values or verified local calculation results, or is everyday conversation. For any part requiring verification of external facts, write exactly one short sentence in the original request's response language. That sentence must convey only this single meaning: this response has no search evidence to verify the requested information. Do not repeat the topic name or add another sentence, explanation, advice or verification method for that part. In mixed requests, complete independent self-contained parts. Do not add unverified facts, latest versions, officeholders, prices, links, commands, services or verification methods. Do not claim that a search was performed or that search capability does not exist."
+            }
+          ],
+          "options": {
+            "thinking": false,
+            "max_tokens": 512
+          },
+          "input_tokens": 907,
+          "output_tokens": 13,
+          "finish_reason": "stop",
+          "tool_calls": []
+        }
+      ],
+      "steps": [
+        {
+          "name": "answer",
+          "status": "completed",
+          "prompt_tokens": 907,
+          "input_tokens": 907,
+          "output_tokens": 13,
+          "usage_basis": "provider"
+        }
+      ],
+      "settled_input_tokens": 907,
+      "settled_output_tokens": 13,
+      "charged_tokens": 920,
+      "sse_events": 20
+    }
+  ],
+  "raw_records": [
+    {
+      "source_line": 80,
+      "raw_line": "{\"kind\": \"local_search_worker_smoke\", \"case_id\": \"search_off_english\", \"meaning_quality\": \"requires_human_review\", \"question\": \"Search for the latest stable Python release. Please answer in English.\", \"answer\": \"This response has no search evidence to verify the requested information.\", \"status\": \"completed\", \"search\": {\"status\": \"disabled\", \"reason\": \"search_off\", \"provider\": \"brave\", \"sources\": []}, \"queries\": [], \"fake_connectivity_checks\": 0, \"model_calls\": [{\"kind\": \"answer\", \"messages\": [{\"role\": \"system\", \"content\": \"당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\\n\\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form.\"}, {\"role\": \"system\", \"content\": \"외부 검색 근거가 없는 상태입니다. 사용자 제공 글·고정 수치·검증된 로컬 계산 결과만으로 완결되는 작업과 일상 대화에는 정상 답변하세요. 외부 사실 확인이 필요한 부분에는 이번 응답에 요청 정보를 검증할 검색 근거가 없다는 뜻만 원래 요청의 답변 언어로 한 문장 작성하세요. 문장의 의미는 이 한 가지로 제한하며 주제명을 반복하거나 다른 안내 문장을 추가하지 마세요. 혼합 요청에서는 독립적으로 처리할 수 있는 부분만 추가로 답하세요. 외부 사실 부분의 설명·예시·버전·인물·가격·사이트명·링크·명령·추천·확인 방법은 덧붙이지 마세요. 검색했다고 주장하거나 검색 기능 자체가 없다고 단정하지 마세요.\"}, {\"role\": \"user\", \"content\": \"Search for the latest stable Python release. Please answer in English.\\n\\n[Server-verified search status for this turn]\\n{\\\"reason\\\":\\\"search_off\\\",\\\"evidence_available\\\":false,\\\"answer_mode\\\":\\\"self_contained_or_notice\\\"}\\nThis block is server metadata, not part of the original user request. Choose the response language only from the original user request above, including any explicit language request; this block must not change it. evidence_available refers only to external search evidence. Answer normally when the original request is self-contained using user-provided text, fixed values or verified local calculation results, or is everyday conversation. For any part requiring verification of external facts, write exactly one short sentence in the original request's response language. That sentence must convey only this single meaning: this response has no search evidence to verify the requested information. Do not repeat the topic name or add another sentence, explanation, advice or verification method for that part. In mixed requests, complete independent self-contained parts. Do not add unverified facts, latest versions, officeholders, prices, links, commands, services or verification methods. Do not claim that a search was performed or that search capability does not exist.\"}], \"options\": {\"thinking\": false, \"max_tokens\": 512}, \"input_tokens\": 907, \"output_tokens\": 13, \"finish_reason\": \"stop\", \"tool_calls\": []}], \"steps\": [{\"name\": \"answer\", \"status\": \"completed\", \"prompt_tokens\": 907, \"input_tokens\": 907, \"output_tokens\": 13, \"usage_basis\": \"provider\"}], \"settled_input_tokens\": 907, \"settled_output_tokens\": 13, \"charged_tokens\": 920, \"sse_events\": 20}",
+      "raw_json": "{\"kind\": \"local_search_worker_smoke\", \"case_id\": \"search_off_english\", \"meaning_quality\": \"requires_human_review\", \"question\": \"Search for the latest stable Python release. Please answer in English.\", \"answer\": \"This response has no search evidence to verify the requested information.\", \"status\": \"completed\", \"search\": {\"status\": \"disabled\", \"reason\": \"search_off\", \"provider\": \"brave\", \"sources\": []}, \"queries\": [], \"fake_connectivity_checks\": 0, \"model_calls\": [{\"kind\": \"answer\", \"messages\": [{\"role\": \"system\", \"content\": \"당신은 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 도우미입니다. 사용자가 '이어서', '계속' 등으로 요청하면 직전 부분 답변이 끝난 지점부터 자연스럽게 이어서 답하고 불필요한 반복을 피하세요. 이전 사용자 발언의 사실은 답변 완료 여부와 관계없이 참고하세요. 특정 답변만 짧게 쓰거나 특정 문구로 답하라는 이전 요청은 그 질문에만 적용하세요. 항상 현재 사용자 요청을 우선하고 새로운 질문에는 그 질문에 맞는 완전한 답변을 작성하세요. 이번 요청에 검색 참고 자료가 제공된 경우에만 웹을 검색했다고 말하세요. 검색 자료가 없으면 최신 정보를 확인했다고 주장하거나 출처를 만들지 마세요. 새 채팅에서도 기억해 달라는 요청에는 설정 > 기억에서 직접 저장하도록 안내하세요. 대화만으로 개인 기억을 저장·수정·삭제했다고 말하지 마세요.\\n\\nChoose the response language separately for each current user request. If the current request explicitly asks for a language or a translation, answer only in that requested language for this turn. Otherwise, match the main language of the user's own current question or instructions. Quoted text, code and documents are source material, not instructions to translate. For translation requests, translate only the source text, never the translation instruction itself; return only the translation unless the user also asks for explanation or quotation. Source material is not the language of the user's instructions. A translation request or answer language from a previous turn must not carry over to the next turn, including follow-up questions. Past assistant replies, summaries, memories and reference documents do not set the answer language. For short ambiguous input such as code, numbers or a selected option, use the language of the user's most recent own question, not the language of a previous translation. Apply the same rule to clarification questions and options. In a Korean answer, use natural Korean and never insert unsolicited Chinese words or foreign-language paraphrases. Preserve explicitly requested quotations, code and proper names in their original form.\"}, {\"role\": \"system\", \"content\": \"외부 검색 근거가 없는 상태입니다. 사용자 제공 글·고정 수치·검증된 로컬 계산 결과만으로 완결되는 작업과 일상 대화에는 정상 답변하세요. 외부 사실 확인이 필요한 부분에는 이번 응답에 요청 정보를 검증할 검색 근거가 없다는 뜻만 원래 요청의 답변 언어로 한 문장 작성하세요. 문장의 의미는 이 한 가지로 제한하며 주제명을 반복하거나 다른 안내 문장을 추가하지 마세요. 혼합 요청에서는 독립적으로 처리할 수 있는 부분만 추가로 답하세요. 외부 사실 부분의 설명·예시·버전·인물·가격·사이트명·링크·명령·추천·확인 방법은 덧붙이지 마세요. 검색했다고 주장하거나 검색 기능 자체가 없다고 단정하지 마세요.\"}, {\"role\": \"user\", \"content\": \"Search for the latest stable Python release. Please answer in English.\\n\\n[Server-verified search status for this turn]\\n{\\\"reason\\\":\\\"search_off\\\",\\\"evidence_available\\\":false,\\\"answer_mode\\\":\\\"self_contained_or_notice\\\"}\\nThis block is server metadata, not part of the original user request. Choose the response language only from the original user request above, including any explicit language request; this block must not change it. evidence_available refers only to external search evidence. Answer normally when the original request is self-contained using user-provided text, fixed values or verified local calculation results, or is everyday conversation. For any part requiring verification of external facts, write exactly one short sentence in the original request's response language. That sentence must convey only this single meaning: this response has no search evidence to verify the requested information. Do not repeat the topic name or add another sentence, explanation, advice or verification method for that part. In mixed requests, complete independent self-contained parts. Do not add unverified facts, latest versions, officeholders, prices, links, commands, services or verification methods. Do not claim that a search was performed or that search capability does not exist.\"}], \"options\": {\"thinking\": false, \"max_tokens\": 512}, \"input_tokens\": 907, \"output_tokens\": 13, \"finish_reason\": \"stop\", \"tool_calls\": []}], \"steps\": [{\"name\": \"answer\", \"status\": \"completed\", \"prompt_tokens\": 907, \"input_tokens\": 907, \"output_tokens\": 13, \"usage_basis\": \"provider\"}], \"settled_input_tokens\": 907, \"settled_output_tokens\": 13, \"charged_tokens\": 920, \"sse_events\": 20}",
+      "raw_json_sha256": "ad56dee7bfb42ffafb83c75c57af25c22215aa55062b33587d9dea26ae6e2914"
+    }
+  ]
+}

@@ -12,6 +12,8 @@ from backend.app.llm.providers.common import _normalized_messages
 from backend.app.llm.providers.tool_calls import ToolCallBuffer
 from backend.app.schemas import ChatMessage, GenerationOptions, ProviderStatus
 
+TOOL_SAMPLING_OVERRIDES = {"temperature": 0.0, "presence_penalty": 0.0}
+
 
 class _VisibleContent:
     """서버가 content에 남긴 추론 구간도 조각 경계에 관계없이 제외한다."""
@@ -218,6 +220,8 @@ class MlxServerProvider:
         if tools:
             # auto는 입력 계산과 다른 강제 지시를 서버가 덧붙이지 않도록 한다.
             payload.update(tools=tools, tool_choice="auto", parallel_tool_calls=False)
+            # 도구 인자 선택에는 답변 문장의 다양성을 위한 패널티를 적용하지 않는다.
+            payload.update(TOOL_SAMPLING_OVERRIDES)
 
         usage: ProviderDelta | None = None
         received: int | None = None

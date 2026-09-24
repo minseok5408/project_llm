@@ -395,6 +395,29 @@ def test_incompatible_baseline_is_rejected(change):
         compare(scored(value), scored(baseline_value))
 
 
+@pytest.mark.parametrize(
+    ("baseline_scope", "candidate_scope"),
+    [
+        ("synthetic_search", "live_search"),
+        ("live_search", "synthetic_search"),
+        (None, "live_search"),
+    ],
+)
+def test_search_scope_mismatch_cannot_be_compared(baseline_scope, candidate_scope):
+    baseline, candidate = report(), report()
+    baseline["search_scope"], candidate["search_scope"] = baseline_scope, candidate_scope
+    with pytest.raises(ValueError, match="검색 평가 범위"):
+        compare(scored(candidate), scored(baseline))
+
+
+@pytest.mark.parametrize("scope", [None, "synthetic_search", "live_search"])
+def test_matching_search_scope_and_ordinary_reports_remain_comparable(scope):
+    value = report()
+    if scope is not None:
+        value["search_scope"] = scope
+    assert compare(scored(value), scored(value))["passed"] is True
+
+
 @pytest.mark.parametrize("state", ["pending", "not_run", "failed_execution", "failed_quality"])
 def test_unqualified_baseline_cannot_be_promoted(state):
     value = report(mode="contract" if state == "not_run" else "model")

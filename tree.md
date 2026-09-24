@@ -65,7 +65,7 @@ project_llm/
 │   │   │   │   ├── evaluator.py # 외부 접근 없는 제한 산술·Python AST 해석
 │   │   │   │   ├── planning.py  # 질문 의도·수치 근거·완전한 코드 원문 검증
 │   │   │   │   └── service.py   # 준비 단계·실제 사용량·최종 문맥·중단 연결
-│   │   │   └── web_search/    # 검색 계획·제한 재검색·Tavily/Brave 어댑터
+│   │   │   └── web_search/    # 검색 후보·로컬 의미 판단·제한 재검색·Tavily/Brave 어댑터
 │   │   ├── services/
 │   │   │   ├── generations/  # 생성 승인·본문 저장·정산·영속 이벤트
 │   │   │   ├── conversations.py # 대화·첨부 삭제 트랜잭션 조합
@@ -80,15 +80,22 @@ project_llm/
 │   │   └── schemas.py          # API 요청·응답 검증
 │   ├── evaluation/             # 합성 답변 평가 자료·실행·사람 채점·기준선 비교
 │   │   ├── fixtures/           # 고정 질문·참고 자료·0~2점 채점 기준
+│   │   │   ├── search-quality-v1.json # 검색 필요성·검색어·직접 근거의 원본 평가
+│   │   │   ├── search-self-contained-v1.json # OFF·로컬의 정상 답변 보존 부속 평가
+│   │   │   ├── search-fallback-language-v1.json # 검색 불가 안내의 필수 응답 언어 회귀 평가
+│   │   │   └── …              # 답변·계산·코드 평가 자료
 │   │   ├── schema.py           # 자료 형식·loopback 평가 주소 검증
 │   │   ├── runner.py           # 기존 입력 정책 재사용·실행 결과·실사용량 기록
 │   │   ├── calculation.py      # 제품과 같은 계산 근거·준비 모델 사용량의 독립 평가
+│   │   ├── search_schema.py    # 검색 사례·고정 응답·선택형 실제 검색 허용 범위
+│   │   ├── search_runner.py    # 검색 판단·검색어·근거·답변·사용량의 연결 평가
 │   │   └── scoring.py          # 답변에 결합한 채점·미평가 구분·회귀 판정
 │   ├── migrations/versions/    # Alembic 이력, head 0017_schema_roles
 │   └── tests/                  # 모델 없는 코드 검사·격리 PostgreSQL 통합 검사
 ├── docs/
 │   ├── development-status.md   # 구현 현황·최근 변경·한계·검증 범위
 │   ├── answer-quality-evaluation.md # 실제 모델 답변 품질 기준·로컬 평가 절차
+│   ├── search-quality-evaluation.md # 검색 필요성·검색어·최신성·근거 답변 평가 절차
 │   ├── adr/                    # 기능별 결정과 당시 검증 기록
 │   └── evaluations/            # 실제 모델·문서 검색의 합성 평가 결과
 ├── hooks/                       # 여러 화면에서 쓰는 공통 React 훅
@@ -102,6 +109,8 @@ project_llm/
 │   ├── manage_accounts.py      # 로컬 시스템 계정·플랜·예산 관리
 │   ├── setup_rag.py            # 고정 로컬 임베딩 모델 설치
 │   ├── evaluate_answers.py     # 답변 자료 검증·실제 모델 실행·채점·기준선 비교
+│   ├── evaluate_search_quality.py # 무통신 검증·합성/선택형 실제 검색·공통 채점
+│   ├── evaluate_search_tools.py # 기존 loopback 모델의 도구 호출·사용량·중단 검사
 │   ├── evaluate_file_rag.py    # 문서 검색 품질 비교
 │   ├── evaluate_answer_language.py # 입력 언어·번역·혼용 합성 평가
 │   ├── evaluate_context.py     # 문맥 계약·선택형 실제 모델 평가
@@ -149,7 +158,7 @@ project_llm/
         mlx-community/Qwen3.8-27B-4bit
 ```
 
-외부 검색은 데이터 사용 ON의 `network_mode=auto`·`web_search=auto` 요청을 기존 키워드 규칙이 검색 대상으로 고르고 서버 정책이 허용할 때 Tavily 또는 선택한 Brave API에 필요한 검색어를 전달합니다. 검색 키워드가 없는 일반 질문은 검색 준비를 생략하며, OFF는 `local/off`로 제한합니다. 키워드가 포함된 번역 등 경계 오판의 한계는 [ADR 0011](docs/adr/0011-online-local-web-search.md)을 따릅니다. 모델 추론·첨부 원본·임베딩은 로컬에 유지합니다. 별도 개발 서버나 원격 미리보기를 구조 정리 과정에서 시작하지 않습니다.
+외부 검색은 데이터 사용 ON의 `network_mode=auto`·`web_search=auto` 요청을 규칙으로 후보 선택한 뒤 로컬 모델로 필요성·대상을 판단합니다. 유효한 검색어와 도구 단계가 확보되면 외부 도달성을 확인하고 Tavily 또는 선택한 Brave API에 필요한 원문 표현만 전달합니다. 검색 불필요·대상 불명확·기존 근거 충분을 구분하며 OFF는 `local/off`로 제한합니다. 후보 규칙과 모델 판단의 한계, 도구 미지원 단일 검색 호환은 [ADR 0024](docs/adr/0024-search-quality-and-intent.md)를 따릅니다. 모델 추론·첨부 원본·임베딩은 로컬에 유지합니다. 별도 개발 서버나 원격 미리보기를 구조 정리 과정에서 시작하지 않습니다.
 
 ## 프런트의 역할 분리
 
@@ -222,6 +231,16 @@ project_llm/
 `tools/calculation/evaluator.py`는 DB·모델·파일·네트워크에 접근하지 않는 제한 AST 해석기입니다. `planning.py`가 현재 질문의 의도·수치 근거·완전한 코드 원문을 검증하고, `service.py`가 산술 계획 또는 코드 직접 추적을 기존 단계·후정산·취소·권한·최종 문맥 예산에 연결합니다. Python 원문 직접 추적은 계획 모델 호출을 생략하며 최종 답변의 일반 모드·생각하기 선택은 유지합니다. 계산된 식과 질문 조건의 의미 일치는 구분합니다. [ADR 0023](docs/adr/0023-local-calculation-verification.md)에 지원 문법·자원 한도·실패 정책을 기록합니다.
 
 `evaluation/calculation.py`는 같은 판단·해석·참고 지침을 합성 평가에서 재사용하고 준비 사용량을 최종 답변과 분리합니다. `scripts/evaluate_answers.py run`은 기본으로 이 경로를 사용하며 `--no-local-calculation`으로 비교용 비활성화를 명시합니다. 독립 평가는 사용자 DB·계정 정산을 사용하지 않습니다.
+
+`tools/web_search/context.py`는 검색 후보와 출처 문맥을, `planning.py`는 검색 필요성·원문 표현·종료 사유를 검증하는 로컬 도구 판단을 담당합니다. `service.py`는 유효한 검색어 이후의 외부 도달성 확인·검색·제한 재검색·출처 저장을 권한·중단·단계·후정산 경로에 연결합니다. 최근 발언에서 고른 공개 표현은 합계 80자로 제한하며 원문은 보존합니다. 조회 시각과 발표일을 구분하고 주장별 근거 일치를 최종 답변 지침에 반영합니다.
+
+검색 근거가 없으면 `self_contained_or_notice` 상태를 최종 사용자 메시지의 모델 입력 복사본에 붙여 제공문·고정 수치·일상 대화는 정상 답변하고 외부 사실 확인 부분만 원래 요청의 응답 언어로 한 문장 안내합니다. 이 문장은 검증할 검색 근거가 없다는 한 가지 의미만 전달하며 특정 언어의 문장을 복사하거나 주제명·확인 방법·추가 문장을 붙이지 않습니다. 원본 DB 메시지는 바꾸지 않습니다. `services/generations/admission.py`는 OFF·로컬·공급자 미설정에서도 이런 입력 안내가 필요할 수 있음을 고려해 허용 문맥·잔여 예산 안의 공간을 확보하며 선예약·선차감하지 않습니다. 실제 안내 입력을 넣을 공간이 없으면 생성하지 않습니다.
+
+`evaluation/search_schema.py`와 `search_runner.py`는 제품의 후보·판단 입력·검색어 검증·근거 지침을 재사용해 검색 단계와 최종 답변을 함께 기록합니다. `scripts/evaluate_search_quality.py`는 기본 무통신 검증, 기존 loopback 모델과 고정 응답의 `run`, 공개 사례를 선택한 `--live-search --case`를 구분합니다. 채점·비교는 공통 `evaluate_answers.py` 계약을 재사용하고 DB·서비스 사용량 장부에는 접근하지 않습니다. [검색 품질 평가 안내](docs/search-quality-evaluation.md)에서 자동 진단·AI 예비 판독·사람 최종 검토의 범위를 구분합니다.
+
+`fixtures/search-self-contained-v1.json`은 원본 검색 23사례와 별도로 버전 관리하는 4개 부속 사례입니다. 검색 OFF·로컬 전용에서 계산·번역·기초 설명·일상 대화를 계속 처리하는지 확인하며 원본 점수에 합산하지 않습니다. `scripts/evaluate_search_quality.py validate --dataset backend/evaluation/fixtures/search-self-contained-v1.json`으로 무통신 검증하고, 실제 모델 실행·채점은 [부속 평가 명령](docs/search-quality-evaluation.md#제공된-정보로-답하는-부속-평가)을 따릅니다. 이 경로는 로컬 계산 검증 도구나 서비스 DB 정산을 실행하지 않습니다.
+
+`fixtures/search-fallback-language-v1.json`은 검색 불가 안내의 한국어·영어·명시 응답 언어를 확인하는 별도 7사례·24개 기준입니다. 모든 사례에 필수 언어 기준을 적용하며 원본 23사례나 이전 점수에 합산하지 않습니다. `scripts/evaluate_search_quality.py validate --dataset backend/evaluation/fixtures/search-fallback-language-v1.json`은 무통신 검증이고 기존 모델 실행·판독은 [언어 회귀 평가 명령](docs/search-quality-evaluation.md#검색-불가-안내의-언어-회귀-평가)을 따릅니다. 정산·SSE 통합과 실제 답변 언어의 성공은 별도 확인합니다.
 
 ## 파일·언어·DB
 

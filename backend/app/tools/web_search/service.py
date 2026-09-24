@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from time import monotonic
+from typing import Literal
 from uuid import uuid4
 
 from sqlalchemy import select, update
@@ -21,7 +22,10 @@ from backend.app.services.network_mode import NetworkModeService
 from backend.app.tools.web_search.adapters.common import public_source_url
 from backend.app.tools.web_search.context import (
     SEARCH_CONTEXT_PROMPT,
+    build_grounded_search_messages,
     build_search_context,
+    build_search_fallback_messages,
+    prohibited_search_needs_notice,
     should_search,
 )
 from backend.app.tools.web_search.planning import decide, query_entries
@@ -38,7 +42,11 @@ class NetworkPermissionChanged(Exception):
 
 
 class SearchPlanningError(Exception):
-    """검색 판단이 실패하여 기존 지식으로 답변해야 한다."""
+    """검색 판단이 실패하여 외부 근거 부재를 답변 입력에 알려야 한다."""
+
+
+class SearchOffline(Exception):
+    """검색할 대상은 있으나 검색 공급자에 연결할 수 없다."""
 
 
 def search_payload(row: WebSearchRun | None) -> dict | None:
@@ -254,11 +262,13 @@ class WebSearchService:
         for amount in range(len(results), 0, -1):
             selected = results[:amount]
             reference = build_search_context(
-                selected, max_chars=self.settings.web_search_max_context_chars
+                selected,
+                max_chars=self.settings.web_search_max_context_chars,
+                checked_at=response.checked_at,
             )
             if reference is None:
                 continue
-            messages = [base[0], reference, *base[1:]]
+            messages = build_grounded_search_messages(base, reference)
             if (
                 sum(len(message.content) for message in messages)
                 > self.settings.llm_max_history_chars
@@ -294,16 +304,7 @@ class WebSearchService:
     ) -> GenerationJob:
         await self._record(job, status, reason)
         base = [ChatMessage.model_validate(message) for message in job["messages"]]
-        notice = ChatMessage(
-            role="system",
-            content=(
-                "이번 답변에는 새 인터넷 검색 자료를 제공하지 못했습니다. "
-                "웹을 검색하거나 최신 사실을 확인했다고 말하지 마세요. "
-                "기존 지식으로 답할 수 있는 범위를 설명하고 최신 정보가 필요하면 "
-                "확인하지 못했다고 밝혀 주세요."
-            ),
-        )
-        messages = [base[0], notice, *base[1:]]
+        messages = build_search_fallback_messages(base, reason)
         options = GenerationOptions.model_validate(job["options"])
         cap = min(
             await StepService(self.database, self.settings).remaining(job),
@@ -315,12 +316,8 @@ class WebSearchService:
                 count_context(self.execution.provider, messages, options), cancellation
             )
         if tokens + min(64, options.max_tokens) > cap:
-            # 판단 호출에 사용한 양만큼 기존 답변의 허용 출력도 줄인다.
-            remaining = cap - job["prompt_tokens"]
-            if remaining < 1:
-                raise StepLimitExceeded
-            options = options.model_copy(update={"max_tokens": min(options.max_tokens, remaining)})
-            return await self._store_context(job, base, options, job["prompt_tokens"])
+            # 확인 불가 안내를 버린 원래 질문만으로 답변을 생성하지 않는다.
+            raise StepLimitExceeded
         options = options.model_copy(update={"max_tokens": min(options.max_tokens, cap - tokens)})
         return await self._store_context(job, messages, options, tokens)
 
@@ -331,6 +328,13 @@ class WebSearchService:
         step = await ledger.start(job, kind="tool", name="web_search", call_id=call_id)
         status, reason = "failed", "search_failed"
         try:
+            # 의미 판단과 단계 한도 검사를 통과한 뒤에만 외부 연결을 확인한다.
+            connection = await self._guarded(
+                self.network_mode.status(job["user_id"]), job, cancellation
+            )
+            if connection["mode"] != "online":
+                raise SearchOffline
+            await self._record(job, "searching")
             response = await self._guarded(self.search_provider.search(query), job, cancellation)
             # 공급자를 교체해도 크기·자료형 검증을 건너뛰지 않는다.
             if (
@@ -364,12 +368,15 @@ class WebSearchService:
         except SearchProviderError as error:
             reason = error.code
             raise
+        except SearchOffline:
+            reason = "offline"
+            raise
         finally:
             await asyncio.shield(ledger.close(job, step, status=status, reason=reason))
 
     async def _searches(
         self, job: GenerationJob, content: str, cancellation: asyncio.Task
-    ) -> SearchResponse:
+    ) -> SearchResponse | Literal["not_needed", "no_query"]:
         if not self.settings.web_search_agent_enabled or not isinstance(
             self.execution.provider, ToolChatProvider
         ):
@@ -385,18 +392,28 @@ class WebSearchService:
             try:
                 async with asyncio.timeout(max(0, deadline - monotonic())):
                     references = [
-                        {"title": item.title[:300], "snippet": item.snippet[:700]}
+                        {
+                            "title": item.title[:300],
+                            "url": item.url,
+                            "snippet": item.snippet[:700],
+                            "retrieved_at": (item.retrieved_at or checked_at).isoformat(),
+                        }
                         for item in results.values()
                     ]
-                    query, call_id = await self._guarded(
+                    decision = await self._guarded(
                         decide(self.execution, job, entries, references, queries, cancellation),
                         job,
                         cancellation,
                     )
-                    if query is None or " ".join(query.split()).casefold() in queries:
+                    query = decision.query
+                    if query is None:
+                        if not queries:
+                            return "not_needed" if decision.reason == "not_needed" else "no_query"
+                        break
+                    if " ".join(query.split()).casefold() in queries:
                         break
                     queries.append(" ".join(query.split()).casefold())
-                    response = await self._search_once(job, query, call_id, cancellation)
+                    response = await self._search_once(job, query, decision.call_id, cancellation)
                     checked_at = response.checked_at
                     # 재검색의 새 근거를 우선하며 출처별 원래 조회 시각을 보존한다.
                     combined = {
@@ -411,6 +428,7 @@ class WebSearchService:
                 StepLimitExceeded,
                 ProviderUnavailable,
                 SearchProviderError,
+                SearchOffline,
             ) as error:
                 # 확인된 이전 자료는 활용하고 실패한 검색이나 잘못된 호출을 자동 반복하지 않는다.
                 if not results:
@@ -425,7 +443,14 @@ class WebSearchService:
             run = await session.get(GenerationRun, job["id"])
             content = (await session.get(Message, run.user_message_id)).content
         mode = job.get("web_search_mode", "off")
-        if not should_search(content, "on" if mode == "on" else "auto"):
+        entries = query_entries(job, content)
+        if not should_search(
+            content,
+            "on" if mode == "on" else "auto",
+            recent_queries=[text for key, text in entries.items() if key],
+        ):
+            if prohibited_search_needs_notice(content):
+                return await self._fallback(job, "disabled", "search_off", cancellation)
             return job
         try:
             if job.get("network_mode", "local") == "local" or mode == "off":
@@ -439,13 +464,28 @@ class WebSearchService:
                 return await self._fallback(
                     job, "unavailable", "provider_unconfigured", cancellation
                 )
-            await self._record(job, "searching")
-            status = await self._guarded(
-                self.network_mode.status(job["user_id"]), job, cancellation
-            )
-            if status["mode"] != "online":
-                return await self._fallback(job, "unavailable", status["reason"], cancellation)
             response = await self._searches(job, content, cancellation)
+            if response == "not_needed":
+                # 검색 판단에 쓴 실제 토큰만큼 답변 상한을 다시 맞춘다. 검색 기록은 만들지 않는다.
+                cap = min(
+                    await StepService(self.database, self.settings).remaining(job),
+                    self.settings.llm_context_window,
+                )
+                remaining = cap - job["prompt_tokens"]
+                if remaining < 1:
+                    raise StepLimitExceeded
+                options = GenerationOptions.model_validate(job["options"])
+                options = options.model_copy(
+                    update={"max_tokens": min(options.max_tokens, remaining)}
+                )
+                return await self._store_context(
+                    job,
+                    [ChatMessage.model_validate(message) for message in job["messages"]],
+                    options,
+                    job["prompt_tokens"],
+                )
+            if response == "no_query":
+                return await self._fallback(job, "disabled", "no_query", cancellation)
             if not response.results:
                 return await self._fallback(job, "no_results", "no_results", cancellation)
             fitted = await self._guarded(self._fit(job, response), job, cancellation)
@@ -455,6 +495,8 @@ class WebSearchService:
             return await self._store_context(job, messages, options, tokens, sources=sources)
         except NetworkPermissionChanged:
             return await self._fallback(job, "disabled", "mode_changed", cancellation)
+        except SearchOffline:
+            return await self._fallback(job, "unavailable", "offline", cancellation)
         except SearchProviderError as error:
             return await self._fallback(job, "failed", error.code, cancellation)
         except (TimeoutError, StepLimitExceeded, SearchPlanningError) as error:

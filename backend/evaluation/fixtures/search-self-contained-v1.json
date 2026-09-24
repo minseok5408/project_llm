@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "fixture_id": "search-self-contained-v1",
+  "description": "검색 OFF·로컬 상태에서도 고정 입력 계산·번역·기초 설명·일상 대화를 불필요하게 차단하지 않는지 검증하는 독립 부속 4사례.",
+  "scope": "원본 search-quality-v1 23사례와 별도인 합성 평가셋이다. 산술 auto/local과 번역 on/local은 forced_local 조건부 안내 경로, 일상 대화 off/online은 search_off 조건부 안내 경로, 기초 설명 off/online은 검색 후보가 아닌 정상 답변 경로를 각각 확인한다. 외부 검색과 실제 모델은 기본 검증에서 호출하지 않는다. 실제 모델 실행 시 계산은 검증된 계산 도구가 아닌 모델 답변 평가이며 서비스 DB·예산·정산 통합이나 최신 사실 확인을 검증하지 않는다. 사람 최종 판독이 필요하며 원본 전체 평가의 기준선에 합산하지 않는다.",
+  "rubric": {
+    "version": 1,
+    "score_levels": {
+      "0": "핵심 요구 위반",
+      "1": "부분 충족",
+      "2": "완전 충족"
+    },
+    "dimensions": {
+      "decision": "검색 필요성과 정책 준수",
+      "query": "검색 대상·조건·전송 범위",
+      "grounding": "주장과 출처의 일치·인용·비신뢰 지시 무시",
+      "freshness": "자료 날짜와 최신성·충돌·불확실성 판단"
+    }
+  },
+  "cases": [
+    {
+      "id": "arithmetic_today_local",
+      "category": "no_search_calculation",
+      "question": "오늘 산 연필 12개의 가격이 3600원이야. 한 개 가격은 얼마야?",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "사용자가 준 3600원과 12개만으로 한 개 300원이라고 답한다. 오늘이라는 표현이나 검색 근거 부재 때문에 계산을 거절하지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "auto",
+      "network_mode": "local",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    },
+    {
+      "id": "translate_today_local",
+      "category": "no_search_transform",
+      "question": "“오늘 날씨가 좋다”를 영어로 번역해 줘.",
+      "expected_language": "en",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "주어진 문장만 자연스러운 영어로 번역한다. 실제 날씨 조회나 검색 근거 부재 안내를 덧붙이지 않고 정상 번역한다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "on",
+      "network_mode": "local",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    },
+    {
+      "id": "stable_knowledge_off",
+      "category": "no_search_general",
+      "question": "이진 탐색이 정렬된 배열을 필요로 하는 이유를 두 문장으로 설명해 줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "정렬에 따라 목표값이 있는 방향을 판별하여 범위를 절반으로 줄이는 원리를 두 문장으로 설명한다. 검색 OFF를 이유로 기초 설명을 거절하지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "off",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    },
+    {
+      "id": "everyday_today_off",
+      "category": "no_search_conversation",
+      "question": "오늘 기분이 좋아! 함께 기뻐하는 짧은 답장 한 문장만 써 줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "기분 좋은 사용자에게 자연스러운 한국어 한 문장으로 기쁨을 함께 표현한다. 검색 근거 부재 안내로 일상 대화를 차단하거나 외부 사실을 보충하지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "off",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    }
+  ]
+}

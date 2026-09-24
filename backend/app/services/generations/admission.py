@@ -36,7 +36,8 @@ from backend.app.services.generations.events import (
 from backend.app.services.monthly_allowance import MonthlyAllowanceService
 from backend.app.services.token_quota import QuotaExceeded, TokenQuotaService
 from backend.app.tools.questions import QuestionAnswers, QuestionCard
-from backend.app.tools.web_search.context import should_search
+from backend.app.tools.web_search.context import prohibited_search_needs_notice, should_search
+from backend.app.tools.web_search.planning import query_entries
 
 ADMISSION_LOCK = 7160524630128422
 
@@ -342,10 +343,17 @@ class AdmissionMixin:
             run_id = uuid4()
             preference = await self.network_mode.preference(session, actor_id)
             resolved_mode = "local" if preference.local_only or network_mode == "local" else "auto"
-            search_possible = (
-                resolved_mode == "auto"
-                and self.search_provider.configured
-                and should_search(content, web_search)
+            # 외부 검색이 꺼져도 근거 부재 안내가 추가될 수 있어 그 입력 여유를 포함한다.
+            search_context_possible = prohibited_search_needs_notice(content) or should_search(
+                content,
+                "on" if web_search == "on" else "auto",
+                recent_queries=[
+                    text
+                    for key, text in query_entries(
+                        {"messages": [message.model_dump() for message in context]}, content
+                    ).items()
+                    if key
+                ],
             )
             await MonthlyAllowanceService(session, actor_id).ensure()
             quota = TokenQuotaService(session, actor_id)
@@ -385,7 +393,7 @@ class AdmissionMixin:
 
             if (
                 compaction_needed
-                or search_possible
+                or search_context_possible
                 or through
                 or memory_revision
                 or file_states

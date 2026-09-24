@@ -1,0 +1,712 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "live_search_ai_preliminary_summary",
+  "review_kind": "ai_preliminary",
+  "human_review_completed": false,
+  "official_baseline_eligible": false,
+  "run_id": "e3e74e39-e7bb-4786-9356-8865d9e813b2",
+  "created_at": "2026-09-23T13:40:46.721000+00:00",
+  "reviewed_at": "2026-09-23T13:54:53.798847+00:00",
+  "search_scope": "live_search",
+  "dataset_id": "search-quality-v1",
+  "dataset_sha256": "778aaa86e8d60f069ebe9126abfb94df4160545ebfce70f75bfa3bb0f3b6bb59",
+  "local_artifacts": {
+    "search-quality-20260923-r8-live.json": {
+      "file_sha256": "d12dfac28557fd1aff521663524fbd1ac3a4017ed96fdf927287ae98d67f9ef6",
+      "canonical_sha256": "cef28e15f868107980fe252d2f009002b2649e5111eaceb739d16af00754b24b"
+    },
+    "search-quality-20260923-r8-live-ai-review.json": {
+      "file_sha256": "2d54ae9154e0833180e674cb27e5949c57423eb87823108fc426956b9a2c64da",
+      "canonical_sha256": "d694ea6f091b8b57943d97d6afc3ed159e6762bf7fd379ebaa5b7b536a3e2e6a"
+    },
+    "search-quality-20260923-r8-live-ai.json": {
+      "file_sha256": "43691439d628879a7ad48e8fb1f3cef77b382d992d50831718b593a35315ff2c",
+      "canonical_sha256": "b9792a83ba2fc6d5eb2212be328eb14a380d20593f61ca6a940897a5b8d6e308"
+    }
+  },
+  "configuration": {
+    "local_calculation": false,
+    "model": "mlx-community/Qwen3.8-27B-4bit",
+    "context_window": 32768,
+    "max_tokens": 512,
+    "thinking": false,
+    "timeout_seconds": 120.0,
+    "max_input_chars": 200000,
+    "repeat": 1,
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5,
+      "repetition_penalty": 1.0,
+      "seed": null
+    },
+    "search": {
+      "agent_enabled": true,
+      "provider": "tavily",
+      "max_attempts": 2,
+      "max_results": 5,
+      "planning_max_tokens": 256,
+      "planning_thinking": false,
+      "planning_sampling": {
+        "temperature": 0.0,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 0.0,
+        "repetition_penalty": 1.0,
+        "seed": null
+      },
+      "max_query_chars": 500,
+      "max_context_chars": 12000,
+      "agent_timeout_seconds": 90.0
+    }
+  },
+  "implementation": {
+    "commit": "80984e0a20e194ee28bbe6fbebb07bbaa1bd194c",
+    "dirty": true,
+    "code_sha256": "7e2f604457c9df27c439e650e6841c805040e4d7e71c7aa6ba7af9ab7fc0828e",
+    "prompt_policy_sha256": "e2c5a9d9bb0b2382ab9f2209f7db5868a70bd2da2ce61f617772dcfe841375b3",
+    "packages": {
+      "mlx-vlm": "0.6.17",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5"
+    },
+    "search_cli_sha256": "7e159d3f59f94e46c5b3b6a7dfba110810ee9aa096800508bea5142d3220a8a3"
+  },
+  "assessment": {
+    "policy": {
+      "version": 1,
+      "minimum_case_score": 0.75,
+      "minimum_overall_score": 0.9,
+      "maximum_overall_regression": 0.02,
+      "maximum_case_regression": 0.25
+    },
+    "scope": "subset",
+    "status": "failed",
+    "passed": false,
+    "overall_score": null,
+    "failures": [
+      {
+        "case_id": "latest_python",
+        "repeat": 1,
+        "reasons": [
+          "필수 채점 항목에서 0점을 받았습니다.",
+          "사례별 최소 품질 점수를 충족하지 못했습니다."
+        ]
+      },
+      {
+        "case_id": "purchase_recommendation",
+        "repeat": 1,
+        "reasons": [
+          "모델 실행이 완료되지 않았습니다.",
+          "모델 답변이 정상 종료되지 않았습니다.",
+          "모델 실행 오류가 기록되어 있습니다.",
+          "입력 토큰 계산과 확정 사용량이 일치하지 않습니다.",
+          "확정 출력 토큰 사용량이 올바르지 않습니다.",
+          "수신 중 확인한 출력 토큰 사용량이 올바르지 않습니다."
+        ]
+      }
+    ]
+  },
+  "observations": [
+    "latest_python은 공식 다운로드 목록의 2020년 항목을 최신 안정판으로 단정한 뒤 확정할 수 없다고 철회했다. 비공식 자료의 최소 사용 권장 범위를 현재 최신 안정판 추천으로 확장했다. 뒤의 유보가 첫 단정의 오류를 없애지 않는다.",
+    "public_followup의 답변 수치와 2026년 2분기 시점은 실제 선택 자료가 직접 뒷받침한다. 다만 검색어에는 지시어와 명령문 및 과거 발언의 대화 구절이 불필요하게 포함됐다.",
+    "current_role은 [1][2]의 명시적인 현직 인물 표시와 취임일·정당을 그대로 사용했다. 오래된 대통령기록관 자료의 현재 표현을 현직 근거로 사용하지 않았다. 자료 밖 학습 기억으로 대체한 이전 합성 사례와 다르다.",
+    "purchase_recommendation은 답변 단계 120초에 중단됐고 확정 입력·출력 토큰 및 정상 종료 이유가 없다. 460 수신 토큰은 확정 사용량이 아니다. 검색 계획 4321/114 토큰만 확정됐으며 최종 합계 complete=false다.",
+    "추천의 후속 계획은 같은 검색어를 반복해 duplicate_stopped로 막혔다. 부분 답변에도 근거 없는 예산 적합성 및 직접 지지되지 않는 추천 기준·성능 설명이 있어 단순 지연 문제로만 볼 수 없다.",
+    "시간 제한 또는 출력 상한을 늘린 후속 재검사는 다른 설정의 실행이며 성능 개선 또는 동일 조건 회귀 비교로 해석하지 않는다."
+  ],
+  "limitations": [
+    "DB·계정 토큰 예산·서비스 단계 수 한도와 후정산 통합은 검증하지 않습니다.",
+    "서비스 _fit의 계정 잔여 예산에 따른 출처 제외·출력 축소는 재현하지 않습니다.",
+    "후속 검색 실패도 평가 실행 실패로 기록합니다. 서비스는 확보한 근거로 답변할 수 있습니다.",
+    "실서비스 동작은 별도의 DB 통합 테스트와 실제 서비스 실행으로 검증해야 합니다.",
+    "원문 질문·답변·검색어·검색 요약 본문은 이 공유 요약에 재배포하지 않는다. 실제 검색 원본과 AI 채점 파일은 data/evaluations의 권한 0600 로컬 파일이다.",
+    "구매 추천의 최종 사용량 미확정·실행 실패로 전체 점수는 null이다. 부분 답변 점수는 관찰용이며 성공한 모델 실행으로 처리하지 않는다.",
+    "선택 출처 내용과 실제 답변의 일치만 평가했으며 현재 외부 사실을 새 웹 조회로 독립 검증하지 않았다."
+  ],
+  "cases": [
+    {
+      "case_id": "translate_today",
+      "repeat": 1,
+      "status": "passed",
+      "score": 1.0,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "번역 요청에 계획·검색 호출이 모두 0건이다."
+        },
+        {
+          "id": "answer",
+          "score": 2,
+          "notes": "제공된 한국어 원문만 자연스러운 영어로 번역했다. 실제 날씨를 조회하거나 부가 설명을 하지 않았다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 527,
+        "input_tokens": 527,
+        "output_tokens": 7,
+        "reported_input_tokens": 527,
+        "reported_output_tokens": 7,
+        "usage_status": "confirmed",
+        "received_output_tokens": 6,
+        "finish_reason": "stop",
+        "elapsed_seconds": 8.524263,
+        "first_token_seconds": 7.689412
+      },
+      "total_elapsed_seconds": 8.524392,
+      "total_confirmed_usage": {
+        "input_tokens": 527,
+        "output_tokens": 7,
+        "complete": true
+      },
+      "search": {
+        "status": "skipped",
+        "elapsed_seconds": 1e-06,
+        "confirmed_input_tokens": 0,
+        "confirmed_output_tokens": 0,
+        "usage_complete": true
+      },
+      "search_count": 0,
+      "planner_steps": [],
+      "source_urls": [],
+      "input_sha256": "8517fe4957eeb2cb9cfc5f03f066784a7eda84403aae5c98a052334af9c7d9cc",
+      "answer_sha256": "f086835168f490574520473dc6200511ea09602e94f862ba832e5579bacb44ed"
+    },
+    {
+      "case_id": "search_off",
+      "repeat": 1,
+      "status": "passed",
+      "score": 1.0,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "검색 OFF 정책에 따라 계획·검색 호출이 모두 0건이다."
+        },
+        {
+          "id": "answer",
+          "score": 2,
+          "notes": "이번 답변에서 확인할 검색 근거가 없다고만 알렸다. 최신 확인 주장·버전·명령·확인 방법 보충이 없다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 874,
+        "input_tokens": 874,
+        "output_tokens": 13,
+        "reported_input_tokens": 874,
+        "reported_output_tokens": 13,
+        "usage_status": "confirmed",
+        "received_output_tokens": 12,
+        "finish_reason": "stop",
+        "elapsed_seconds": 14.100393,
+        "first_token_seconds": 12.426558
+      },
+      "total_elapsed_seconds": 14.10048,
+      "total_confirmed_usage": {
+        "input_tokens": 874,
+        "output_tokens": 13,
+        "complete": true
+      },
+      "search": {
+        "status": "skipped",
+        "elapsed_seconds": 1e-06,
+        "confirmed_input_tokens": 0,
+        "confirmed_output_tokens": 0,
+        "usage_complete": true
+      },
+      "search_count": 0,
+      "planner_steps": [],
+      "source_urls": [],
+      "input_sha256": "6616091838f5040a7736cc0fb7cc8a1d4b162d8e8197b0767b97185008322402",
+      "answer_sha256": "37ced3244d264ab733a3f75df39c6c34f2951c688f0ad601cae149ab85767f19"
+    },
+    {
+      "case_id": "latest_python",
+      "repeat": 1,
+      "status": "failed",
+      "score": 0.4,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "공식 출처에서 최신 안정판을 찾으라는 요청에 실제 검색 1회를 수행했다. 이 기준은 충분한 근거인지에 대한 후속 판정의 성공을 뜻하지 않는다."
+        },
+        {
+          "id": "answer",
+          "score": 0,
+          "notes": "2020년 릴리스 목록 일부에 나온 Python 3.6.11을 첫 문장에서 최신 안정판으로 단정했다. 뒤에서 현재 최신 여부를 확정할 수 없다고 철회하고 3.12 또는 3.13 이상을 현재 권장 최신 안정판으로 보충하여 실제 자료 범위를 넘었다."
+        },
+        {
+          "id": "query_scope",
+          "score": 2,
+          "notes": "검색어에 Python·최신 안정판·공식 출처 조건을 보존했고 개인정보나 관계없는 대화를 전송하지 않았다. 현재 질문 명령까지 길게 보낸 것은 개선 여지가 있으나 고정 대상·조건·개인정보 기준을 위반하지 않는다."
+        },
+        {
+          "id": "citations",
+          "score": 0,
+          "notes": "[1]은 2020년 릴리스 항목과 날짜만 뒷받침하며 현재 최신 단정은 지지하지 않는다. [3][4]의 주기 및 최소 사용 권장 내용을 2026년 최신 안정판 추천의 근거로 확장했고 제공되지 않은 페이지 최상단 섹션 설명도 보충했다."
+        },
+        {
+          "id": "freshness",
+          "score": 0,
+          "notes": "2026-09-23 조회 자료에 포함된 2020년 목록의 첫 항목을 최신으로 오인했다. 뒤의 시점 유보와 단정이 충돌하며 최신성을 검증하지 못했다."
+        }
+      ],
+      "failures": [
+        "필수 채점 항목에서 0점을 받았습니다.",
+        "사례별 최소 품질 점수를 충족하지 못했습니다."
+      ],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 4059,
+        "input_tokens": 4059,
+        "output_tokens": 212,
+        "reported_input_tokens": 4059,
+        "reported_output_tokens": 212,
+        "usage_status": "confirmed",
+        "received_output_tokens": 211,
+        "finish_reason": "stop",
+        "elapsed_seconds": 84.423319,
+        "first_token_seconds": 55.479973
+      },
+      "total_elapsed_seconds": 153.768119,
+      "total_confirmed_usage": {
+        "input_tokens": 8089,
+        "output_tokens": 292,
+        "complete": true
+      },
+      "search": {
+        "status": "finished",
+        "elapsed_seconds": 69.344433,
+        "confirmed_input_tokens": 4030,
+        "confirmed_output_tokens": 80,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 981,
+          "input_tokens": 981,
+          "output_tokens": 52,
+          "received_output_tokens": 51,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 20.691597
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "finish_search",
+          "reason": "sufficient",
+          "counted_input_tokens": 3049,
+          "input_tokens": 3049,
+          "output_tokens": 28,
+          "received_output_tokens": 27,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 45.800418
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://www.python.org/downloads",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://www.palantir.com/docs/kr/foundry/transforms-python/python-versions",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://inmonim.github.io/posts/python_%EC%97%B0%EB%8C%80%EA%B8%B0",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://www.whatwant.com/entry/Python-Version",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        },
+        {
+          "id": 5,
+          "url": "https://tiptechtoe.tistory.com/entry/Python-version-characteristics",
+          "retrieved_at": "2026-09-23T13:41:32.922771+00:00"
+        }
+      ],
+      "input_sha256": "ed89b24350482514c839c1e0d44d22be34dce657f7775c13522b2d9ad34cce7c",
+      "answer_sha256": "6423673ffc618e4a6adbcc2d269faa8707788d68c92f502fc0002831f39d40a3"
+    },
+    {
+      "case_id": "public_followup",
+      "repeat": 1,
+      "status": "passed",
+      "score": 0.9,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "문맥에서 회사를 해소해 실제 최신 분기 실적 검색을 1회 수행했다."
+        },
+        {
+          "id": "answer",
+          "score": 2,
+          "notes": "삼성전자로 해소하고 제공된 [1][2]의 2026년 2분기 매출·영업이익·EPS 및 부문 수치를 정확히 설명했다. 근거 밖 실적을 만들지 않았다."
+        },
+        {
+          "id": "query_scope",
+          "score": 1,
+          "notes": "회사와 최신 분기 실적 조건은 맞지만 현재의 지시어·검색 명령 및 과거 발언의 대해 이야기하자라는 대화 구절까지 검색어에 포함했다. 공개 대상만 좁혀 보내지 못했다."
+        },
+        {
+          "id": "citations",
+          "score": 2,
+          "notes": "핵심 전체 및 부문 수치는 [1], EPS와 차기 발표 일정은 [1][2]에 실제 포함되어 해당 번호를 인용했다. 제목만으로 본문을 추정하지 않았다."
+        },
+        {
+          "id": "freshness",
+          "score": 2,
+          "notes": "자료 자체의 2026년 2분기 확정 수치와 10월 29일 예정된 3분기 일정을 구분했다. 2026-09-23 기준 미래 예정 실적을 이미 발표한 것으로 오인하지 않았다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 4721,
+        "input_tokens": 4721,
+        "output_tokens": 305,
+        "reported_input_tokens": 4721,
+        "reported_output_tokens": 305,
+        "usage_status": "confirmed",
+        "received_output_tokens": 304,
+        "finish_reason": "stop",
+        "elapsed_seconds": 104.514911,
+        "first_token_seconds": 64.075295
+      },
+      "total_elapsed_seconds": 184.815514,
+      "total_confirmed_usage": {
+        "input_tokens": 9439,
+        "output_tokens": 401,
+        "complete": true
+      },
+      "search": {
+        "status": "finished",
+        "elapsed_seconds": 80.299865,
+        "confirmed_input_tokens": 4718,
+        "confirmed_output_tokens": 96,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 990,
+          "input_tokens": 990,
+          "output_tokens": 68,
+          "received_output_tokens": 67,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 22.788604
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "finish_search",
+          "reason": "sufficient",
+          "counted_input_tokens": 3728,
+          "input_tokens": 3728,
+          "output_tokens": 28,
+          "received_output_tokens": 27,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 54.302868
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://news.samsung.com/kr/%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90-2026%EB%85%84-2%EB%B6%84%EA%B8%B0-%EC%8B%A4%EC%A0%81-%EB%B0%9C%ED%91%9C",
+          "retrieved_at": "2026-09-23T13:44:09.148017+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://kr.investing.com/equities/samsung-electronics-co-ltd-earnings",
+          "retrieved_at": "2026-09-23T13:44:09.148017+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://v.daum.net/v/3Xi8Mflwhe",
+          "retrieved_at": "2026-09-23T13:44:09.148017+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://news.samsungsemiconductor.com/kr/%EC%82%BC%EC%84%B1%EC%A0%84%EC%9E%90-2025%EB%85%84-3%EB%B6%84%EA%B8%B0-%EC%9E%A0%EC%A0%95%EC%8B%A4%EC%A0%81-%EB%B0%9C%ED%91%9C",
+          "retrieved_at": "2026-09-23T13:44:09.148017+00:00"
+        },
+        {
+          "id": 5,
+          "url": "https://stock.mk.co.kr/news/view/1059773",
+          "retrieved_at": "2026-09-23T13:44:09.148017+00:00"
+        }
+      ],
+      "input_sha256": "3046800b6babfe5f019e5db067aa6f9c06ff43b09231b4fa8fb022549dcdf830",
+      "answer_sha256": "13ea8928c7e7c05e4a18eaa65bef2bf02a3cd99dde7660219a15e6f649e35643"
+    },
+    {
+      "case_id": "current_role",
+      "repeat": 1,
+      "status": "passed",
+      "score": 1.0,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "최신이라는 단어가 없는 현직 질문에 실제 검색 1회를 수행했다."
+        },
+        {
+          "id": "answer",
+          "score": 2,
+          "notes": "[1][2]가 직접 표시하는 현직 이재명과 2025년 6월 4일 취임, 정당 정보를 답했다. 제공되지 않은 인물로 대체하거나 오래된 전직 자료의 현재 표현을 따르지 않았다."
+        },
+        {
+          "id": "query_scope",
+          "score": 2,
+          "notes": "대한민국 대통령이라는 공개 대상과 현직 질문을 그대로 보존했고 개인정보·관계없는 대화는 없다."
+        },
+        {
+          "id": "citations",
+          "score": 2,
+          "notes": "[1][2] 요약에 현직·취임일·정당이 실제로 있고 답변은 그 두 번호를 인용했다."
+        },
+        {
+          "id": "freshness",
+          "score": 2,
+          "notes": "최신성 판단은 조회 시각 자체가 아니라 선택한 자료의 직접적인 현직 표시를 따른다. 역사 자료의 과거 현재 표현을 현직으로 착각하지 않았다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 4868,
+        "input_tokens": 4868,
+        "output_tokens": 39,
+        "reported_input_tokens": 4868,
+        "reported_output_tokens": 39,
+        "usage_status": "confirmed",
+        "received_output_tokens": 38,
+        "finish_reason": "stop",
+        "elapsed_seconds": 71.419929,
+        "first_token_seconds": 66.38473
+      },
+      "total_elapsed_seconds": 146.203387,
+      "total_confirmed_usage": {
+        "input_tokens": 9519,
+        "output_tokens": 111,
+        "complete": true
+      },
+      "search": {
+        "status": "finished",
+        "elapsed_seconds": 74.783098,
+        "confirmed_input_tokens": 4651,
+        "confirmed_output_tokens": 72,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 973,
+          "input_tokens": 973,
+          "output_tokens": 44,
+          "received_output_tokens": 43,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 19.543159
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "finish_search",
+          "reason": "sufficient",
+          "counted_input_tokens": 3678,
+          "input_tokens": 3678,
+          "output_tokens": 28,
+          "received_output_tokens": 27,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 53.352924
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://namu.wiki/w/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD%20%EB%8C%80%ED%86%B5%EB%A0%B9",
+          "retrieved_at": "2026-09-23T13:47:09.402056+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://ko.wikipedia.org/wiki/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD_%EB%8C%80%ED%86%B5%EB%A0%B9",
+          "retrieved_at": "2026-09-23T13:47:09.402056+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://namu.wiki/w/%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD%20%EB%8C%80%ED%86%B5%EB%A0%B9/%EB%AA%85%EB%8B%A8",
+          "retrieved_at": "2026-09-23T13:47:09.402056+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://ko.wikisource.org/wiki/%ED%8B%80:%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD_%EB%8C%80%ED%86%B5%EB%A0%B9_%EB%A8%B8%EB%A6%AC%EB%A7%90_%EB%8C%80%EC%88%98",
+          "retrieved_at": "2026-09-23T13:47:09.402056+00:00"
+        },
+        {
+          "id": 5,
+          "url": "http://18president.pa.go.kr/cheongwadae/introduction/pastPresident.php",
+          "retrieved_at": "2026-09-23T13:47:09.402056+00:00"
+        }
+      ],
+      "input_sha256": "d0ee60fa39fb5a2a6180c429f36a5b6f1f4f50cfe337ce5d7b0732f34536e63c",
+      "answer_sha256": "21b87faf25f7902411b6f31c28264acfaa267b5e0cbfd2dbc5dab07976c34f7d"
+    },
+    {
+      "case_id": "purchase_recommendation",
+      "repeat": 1,
+      "status": "failed",
+      "score": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "사진 편집용 노트북과 150만원 예산에 실제 검색 1회를 수행했다. 답변 timeout은 별도 실행 실패이며 이 점수가 완성된 추천을 뜻하지 않는다."
+        },
+        {
+          "id": "answer",
+          "score": 0,
+          "notes": "보존된 부분 답변은 가격 근거가 없는 갤럭시북 5 프로를 150만원대 추천 항목으로 제시하기 시작했다. RAW·다중 레이어 RAM 기준, GPU 작업 속도 등 자료가 직접 뒷받침하지 않는 설명도 보충했다. 답변은 timeout으로 완성되지 않았다."
+        },
+        {
+          "id": "query_scope",
+          "score": 2,
+          "notes": "실제 검색어가 사진 편집용 노트북과 150만원 예산을 보존하고 개인정보·관계없는 대화가 없다. 동일 검색어의 후속 반복은 차단됐다."
+        },
+        {
+          "id": "citations",
+          "score": 0,
+          "notes": "[2][5]에는 일부 제품 RAM·GPU 사양이 있지만 부분 답변의 RAW·다중 레이어 32GB 권장 및 포토샵·라이트룸/4K 사진 작업 속도 설명을 직접 지지하지 않는다. 제품의 예산 적합성도 인용으로 뒷받침되지 않는다."
+        },
+        {
+          "id": "freshness",
+          "score": 1,
+          "notes": "조회 시각을 최신성 보증으로 명시하지는 않았으나 2025/2026 자료의 시점과 실제 현재 판매가 한계를 구분하지 않은 채 예산대 추천을 시작했다. timeout 중간 출력이므로 뒤에 나올 수 있었던 설명은 가정하지 않는다."
+        }
+      ],
+      "failures": [
+        "모델 실행이 완료되지 않았습니다.",
+        "모델 답변이 정상 종료되지 않았습니다.",
+        "모델 실행 오류가 기록되어 있습니다.",
+        "입력 토큰 계산과 확정 사용량이 일치하지 않습니다.",
+        "확정 출력 토큰 사용량이 올바르지 않습니다.",
+        "수신 중 확인한 출력 토큰 사용량이 올바르지 않습니다."
+      ],
+      "execution": {
+        "status": "failed",
+        "error": "timeout",
+        "counted_input_tokens": 4375,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reported_input_tokens": null,
+        "reported_output_tokens": null,
+        "usage_status": "received_only",
+        "received_output_tokens": 460,
+        "finish_reason": null,
+        "elapsed_seconds": 120.00255,
+        "first_token_seconds": 59.30246
+      },
+      "total_elapsed_seconds": 196.090948,
+      "total_confirmed_usage": {
+        "input_tokens": 4321,
+        "output_tokens": 114,
+        "complete": false
+      },
+      "search": {
+        "status": "duplicate_stopped",
+        "elapsed_seconds": 76.087163,
+        "confirmed_input_tokens": 4321,
+        "confirmed_output_tokens": 114,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 986,
+          "input_tokens": 986,
+          "output_tokens": 57,
+          "received_output_tokens": 56,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 20.908234
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 3335,
+          "input_tokens": 3335,
+          "output_tokens": 57,
+          "received_output_tokens": 56,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 52.945192
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://tilnote.io/pages/69acd7b369ab6ff5e73705af",
+          "retrieved_at": "2026-09-23T13:49:37.326031+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://itsto.tistory.com/133",
+          "retrieved_at": "2026-09-23T13:49:37.326031+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://m.blog.naver.com/choicemon/224243566983?targetKeyword=%EB%85%B8%ED%8A%B8%EB%B6%81%EC%B6%94%EC%B2%9C",
+          "retrieved_at": "2026-09-23T13:49:37.326031+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://www.youtube.com/watch?v=8Xres9VQR_g",
+          "retrieved_at": "2026-09-23T13:49:37.326031+00:00"
+        },
+        {
+          "id": 5,
+          "url": "https://sioni.tistory.com/28",
+          "retrieved_at": "2026-09-23T13:49:37.326031+00:00"
+        }
+      ],
+      "input_sha256": "ccbe8c21cf9b6999e0b0c090ac0cfa4e1f43695a3ee819329242a5ba33b396f5",
+      "answer_sha256": "c8050bbce86d9f89dfe095b7606250fba2386f65981ef1eada417b49d33b54a7"
+    }
+  ]
+}

@@ -7,6 +7,8 @@ export function searchNotice(search: SearchMetadata): string | null {
   if (search.status === 'pending' || search.status === 'searching')
     return '웹에서 참고 자료를 찾고 있습니다…';
   if (search.status === 'completed') return null;
+  if (search.reason === 'no_query')
+    return '검색할 대상을 특정하지 못했습니다. 회사·제품·지역 등을 알려 주세요.';
   if (search.status === 'disabled' && search.reason === 'mode_changed')
     return '데이터 사용 설정이 변경되어 웹검색을 중단했습니다. 최신 정보는 확인하지 못했습니다.';
   if (search.status === 'disabled' && search.reason === 'forced_local')

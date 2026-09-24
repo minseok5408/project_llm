@@ -7,12 +7,13 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import select
 
+from backend.app.context.builder import compose_context
 from backend.app.llm.protocol import ProviderUnavailable
 from backend.app.llm.providers.mock import MockProvider
 from backend.app.models import WebSearchRun
 from backend.app.schemas import GenerationOptions
 from backend.app.services.network_mode import NetworkModeService
-from backend.app.tools.web_search.context import SEARCH_CONTEXT_PROMPT
+from backend.app.tools.web_search.context import SEARCH_CONTEXT_PROMPT, search_unavailable_notice
 from backend.app.tools.web_search.provider import (
     SearchProviderError,
     SearchResponse,
@@ -207,7 +208,11 @@ async def test_forced_local_and_search_off_make_no_external_request(
         await harness.service.network_mode.set_local_only(harness.system.user_id, True)
     else:
         arguments["web_search"] = "off"
-    request = await harness.submit(content="최신 Python 소식을 검색해줘", **arguments)
+    request = await harness.submit(
+        content="최신 Python 소식을 검색해줘",
+        options=GenerationOptions(max_tokens=64),
+        **arguments,
+    )
     await harness.execute_next()
     row = await search_record(harness, request["id"])
     assert row.status == "disabled"
@@ -244,7 +249,7 @@ async def test_search_failure_falls_back_to_local_answer_with_honest_context(
     assert len(search.search_calls) == (0 if outcome == "offline" else 1)
     assert len(model.calls) == 1
     messages, options = model.calls[0]
-    assert any("확인했다고 말하지" in message.content for message in messages)
+    assert search_unavailable_notice(reason) in messages
     assert not any(message.content.startswith(SEARCH_CONTEXT_PROMPT) for message in messages)
     complete = await snapshot(harness.database, request["id"])
     assert complete.run.status == "completed"
@@ -254,12 +259,94 @@ async def test_search_failure_falls_back_to_local_answer_with_honest_context(
 async def test_unconfigured_search_never_checks_or_searches(harness: Harness) -> None:
     search, model = install(harness)
     search.configured = False
-    request = await harness.submit(content="최신 정보를 검색해줘")
+    request = await harness.submit(
+        content="최신 정보를 검색해줘", options=GenerationOptions(max_tokens=64)
+    )
     await harness.execute_next()
     row = await search_record(harness, request["id"])
     assert row.status == "unavailable" and row.reason == "provider_unconfigured"
     assert search.check_calls == 0 and search.search_calls == []
     assert len(model.calls) == 1
+
+
+async def test_fallback_preserves_db_question_and_charges_actual_augmented_input(harness: Harness):
+    search, model = install(harness)
+    await harness.grant()
+    content = "Search for the latest TestAlpha version. Answer in English."
+    request = await harness.submit(
+        harness.member,
+        content=content,
+        options=GenerationOptions(max_tokens=64),
+        web_search="off",
+    )
+    pending = await snapshot(harness.database, request["id"])
+    before = await balance(harness.database, harness.member)
+    assert before.used_tokens == before.reserved_tokens == 0
+    await harness.execute_next()
+
+    saved = await snapshot(harness.database, request["id"])
+    assert saved.run.status == "completed"
+    assert saved.user_message.content == content
+    assert search.check_calls == 0 and search.search_calls == []
+    messages, options = model.calls[0]
+    assert messages[-1].content.startswith(
+        content + "\n\n[Server-verified search status for this turn]\n"
+    )
+    assert search_unavailable_notice("search_off") in messages
+    actual_input = await model.count_input(messages, options)
+    assert options.max_tokens == 64
+    assert saved.reservation.input_tokens == saved.run.prompt_tokens == actual_input
+    assert actual_input > pending.run.prompt_tokens
+    current = await balance(harness.database, harness.member)
+    assert current.used_tokens == actual_input + saved.reservation.output_tokens
+    assert current.reserved_tokens == 0
+
+
+@pytest.mark.parametrize("limit", ["authorized_tokens", "characters", "context_tokens"])
+async def test_fallback_that_cannot_fit_never_runs_unprotected_answer(
+    harness: Harness, monkeypatch, limit: str
+):
+    search, model = install(harness)
+    content = "Search for the latest TestAlpha version."
+    options = GenerationOptions(max_tokens=64)
+    budget = (
+        await model.count_input(compose_context([], content), options) + options.max_tokens
+        if limit == "authorized_tokens"
+        else 10_000
+    )
+    await harness.grant(limit=budget)
+    request = await harness.submit(
+        harness.member,
+        content=content,
+        options=options,
+        web_search="off",
+    )
+    pending = await snapshot(harness.database, request["id"])
+    if limit == "characters":
+        harness.settings.llm_max_history_chars = sum(
+            len(message["content"]) for message in pending.run.request_messages
+        )
+    elif limit == "context_tokens":
+        original_count = model.count_input
+
+        async def count_with_full_context(messages, options):
+            if any("[Server-verified search status for this turn]" in m.content for m in messages):
+                return harness.settings.llm_context_window
+            return await original_count(messages, options)
+
+        monkeypatch.setattr(model, "count_input", count_with_full_context)
+
+    await asyncio.wait_for(harness.execute_next(), timeout=5)
+
+    saved = await snapshot(harness.database, request["id"])
+    assert saved.run.status == saved.assistant.status == "failed"
+    assert saved.run.error_code == "step_limit"
+    assert saved.user_message.content == content and saved.assistant.content == ""
+    assert saved.reservation.status == "released"
+    assert saved.reservation.input_tokens == saved.reservation.output_tokens == 0
+    assert model.calls == [] and search.check_calls == 0 and search.search_calls == []
+    current = await balance(harness.database, harness.member)
+    assert current.used_tokens == current.reserved_tokens == 0
 
 
 async def test_cancel_during_search_closes_search_and_never_starts_or_charges_model(

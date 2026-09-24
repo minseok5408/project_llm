@@ -1,0 +1,434 @@
+{
+  "schema_version": 1,
+  "fixture_id": "search-fallback-language-v1",
+  "description": "기존 검색 금지·OFF·로컬·빈 결과 한국어 4사례와 영어 및 명시 영어·스페인어 OFF 3사례 모두에 필수 언어 기준을 적용하는 독립 7사례 언어 회귀 평가. 과거 품질 점수와 직접 비교하지 않는다.",
+  "scope": "원본 search-quality-v1의 explicit_no_search/search_off/network_local/empty_results 질문·검색 설정·기존 품질 기준을 보존하고 부속 자료에만 필수 language 기준을 추가했다. 영어 질문과 현재 명시한 응답 언어(한국어 질문의 영어, 영어 질문의 스페인어)를 포함한 총 7사례 모두에서 검색 근거 부재 안내가 원래 응답 언어를 유지하는지 검증한다. 한국어 요청에 서버 영어 지침을 복사하는 역방향 회귀도 검사한다. 기존 품질 기준은 삭제하거나 완화하지 않았고 원본 23사례 파일은 변경하지 않았다. 추가 언어 기준이 있으므로 과거 품질 점수와 직접 비교하지 않는 독립 언어 평가이며, 기본 검증은 외부 요청이 없고 실제 모델·worker·DB·정산 통합은 별도다.",
+  "rubric": {
+    "version": 1,
+    "score_levels": {
+      "0": "핵심 요구 위반",
+      "1": "부분 충족",
+      "2": "완전 충족"
+    },
+    "dimensions": {
+      "decision": "검색 필요성과 정책 준수",
+      "query": "검색 대상·조건·전송 범위",
+      "grounding": "주장과 출처의 일치·인용·비신뢰 지시 무시",
+      "freshness": "자료 날짜와 최신성·충돌·불확실성 판단",
+      "language": "현재 요청의 명시 응답 언어 또는 질문 언어 준수"
+    }
+  },
+  "cases": [
+    {
+      "id": "explicit_no_search",
+      "category": "no_search_policy",
+      "question": "웹검색 없이 Python 최신 버전이 무엇인지 확인 가능한 범위만 말해 줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 금지를 지키고 현재 최신 버전을 확인했다고 주장하지 않는다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 한국어 요청의 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변을 영어 등 한국어가 아닌 언어로 작성하거나 서버의 영어 지침을 그대로 출력한다.",
+            "1": "주된 답변은 한국어이지만 요청하지 않은 영어 등 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 한국어로만 전달하고 서버의 영어 지침이나 요청하지 않은 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "auto",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": true
+    },
+    {
+      "id": "search_off",
+      "category": "no_search_policy",
+      "question": "Python 최신 안정판을 검색해 줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 OFF 상태에서 최신 확인을 했다고 말하지 않는다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 한국어 요청의 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변을 영어 등 한국어가 아닌 언어로 작성하거나 서버의 영어 지침을 그대로 출력한다.",
+            "1": "주된 답변은 한국어이지만 요청하지 않은 영어 등 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 한국어로만 전달하고 서버의 영어 지침이나 요청하지 않은 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "off",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": true
+    },
+    {
+      "id": "network_local",
+      "category": "no_search_policy",
+      "question": "Python 최신 안정판을 검색해 줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "데이터 사용 OFF 상태에서 외부 검색·연결 검사를 하지 않고 확인 한계를 설명한다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 한국어 요청의 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변을 영어 등 한국어가 아닌 언어로 작성하거나 서버의 영어 지침을 그대로 출력한다.",
+            "1": "주된 답변은 한국어이지만 요청하지 않은 영어 등 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 한국어로만 전달하고 서버의 영어 지침이나 요청하지 않은 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "auto",
+      "network_mode": "local",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": true
+    },
+    {
+      "id": "empty_results",
+      "category": "empty_results",
+      "question": "가상 제품 TestDelta의 최신 버전을 검색해 줘.",
+      "expected_language": "ko",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 결과가 없음을 밝히고 버전이나 출처를 만들어 내지 않는다."
+          }
+        },
+        {
+          "id": "query_scope",
+          "dimension": "query",
+          "description": "검색어가 공개 대상·현재 요청을 정확히 나타내고 불필요한 대화 정보를 보내지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "보존된 검색어가 대상·조건을 보존하며 개인정보·인증정보·관계없는 대화가 없다."
+          }
+        },
+        {
+          "id": "citations",
+          "dimension": "grounding",
+          "description": "주장과 인용 출처의 실제 제목·요약 내용이 일치한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "핵심 주장마다 실제 제공된 출처 번호를 인용하고, 요약에 없는 본문·출처를 만들지 않는다."
+          }
+        },
+        {
+          "id": "freshness",
+          "dimension": "freshness",
+          "description": "조회 시각과 자료 속 날짜를 구분하고 최신성을 검증한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "자료 자체의 날짜·버전·기준일을 판단하며 조회 시각만으로 오래된 자료를 최신으로 단정하지 않는다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 한국어 요청의 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변을 영어 등 한국어가 아닌 언어로 작성하거나 서버의 영어 지침을 그대로 출력한다.",
+            "1": "주된 답변은 한국어이지만 요청하지 않은 영어 등 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 한국어로만 전달하고 서버의 영어 지침이나 요청하지 않은 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "auto",
+      "network_mode": "online",
+      "expected_search": true,
+      "query_required": [
+        "TestDelta"
+      ],
+      "query_forbidden": [],
+      "fixture_responses": [
+        {
+          "checked_at": "2026-09-20T03:00:00+00:00",
+          "sources": []
+        }
+      ],
+      "live_eligible": false
+    },
+    {
+      "id": "search_off_english",
+      "category": "no_search_policy_language",
+      "question": "Search for the latest stable version of Python.",
+      "expected_language": "en",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 OFF 상태에서 최신 확인을 했다고 말하지 않는다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 요청이 지정한 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변이 영어가 아닌 언어로 작성되어 언어 요청을 충족하지 못한다.",
+            "1": "주된 답변은 영어이지만 요청하지 않은 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 영어로만 전달하고 요청하지 않은 한국어 고정 문장이나 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "off",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    },
+    {
+      "id": "search_off_explicit_english",
+      "category": "no_search_policy_language",
+      "question": "Python 최신 안정판을 검색해 줘. 영어로만 답해 줘.",
+      "expected_language": "en",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 OFF 상태에서 최신 확인을 했다고 말하지 않는다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 요청이 지정한 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변이 명시 요청한 영어가 아닌 언어로 작성되어 언어 요청을 충족하지 못한다.",
+            "1": "주된 답변은 명시 요청한 영어이지만 요청하지 않은 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 명시 요청한 영어로만 전달하고 요청하지 않은 한국어 고정 문장이나 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "off",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    },
+    {
+      "id": "search_off_explicit_spanish",
+      "category": "no_search_policy_language",
+      "question": "Search for the latest stable version of Python. Respond only in Spanish.",
+      "expected_language": "es",
+      "turns": [],
+      "summary": null,
+      "reference_kind": null,
+      "reference_context": null,
+      "criteria": [
+        {
+          "id": "decision",
+          "dimension": "decision",
+          "description": "검색 기록을 보고 실제 검색 필요성과 수행 여부를 판독한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 수행 여부가 기대값 검색 안 함과 일치한다."
+          }
+        },
+        {
+          "id": "answer",
+          "dimension": "grounding",
+          "description": "질문에 직접 답하고 근거 밖 사실을 만들지 않는다.",
+          "required": true,
+          "score_anchors": {
+            "0": "핵심 요구 위반 또는 근거 없는 단정",
+            "1": "핵심은 맞지만 근거·범위 설명 일부 누락",
+            "2": "검색 OFF 상태에서 최신 확인을 했다고 말하지 않는다."
+          }
+        },
+        {
+          "id": "language",
+          "dimension": "language",
+          "description": "검색 근거 부재 안내에서도 현재 요청이 지정한 응답 언어를 유지한다.",
+          "required": true,
+          "score_anchors": {
+            "0": "답변이 명시 요청한 스페인어가 아닌 언어로 작성되어 언어 요청을 충족하지 못한다.",
+            "1": "주된 답변은 명시 요청한 스페인어이지만 요청하지 않은 다른 언어 문장이나 중복 번역을 덧붙인다.",
+            "2": "검색 근거 부재 안내를 명시 요청한 스페인어로만 전달하고 요청하지 않은 한국어 고정 문장이나 다른 언어 번역을 덧붙이지 않는다."
+          }
+        }
+      ],
+      "lexical_checks": [],
+      "search_mode": "off",
+      "network_mode": "online",
+      "expected_search": false,
+      "query_required": [],
+      "query_forbidden": [],
+      "fixture_responses": [],
+      "live_eligible": false
+    }
+  ]
+}

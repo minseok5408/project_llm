@@ -411,6 +411,10 @@ def compare(candidate_scored: dict, baseline_scored: dict) -> dict:
         candidate["dataset"] == baseline["dataset"], "평가 자료 또는 채점 기준이 서로 다릅니다."
     )
     _require(
+        candidate.get("search_scope") == baseline.get("search_scope"),
+        "합성 검색과 실제 검색 등 서로 다른 검색 평가 범위는 비교할 수 없습니다.",
+    )
+    _require(
         set(candidate_cases) == set(baseline_cases), "비교할 사례 또는 반복 실행 집합이 다릅니다."
     )
     for key, case in candidate_cases.items():

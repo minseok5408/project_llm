@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "recorded_evidence_replay_ai_preliminary_summary",
+  "review_kind": "ai_preliminary",
+  "human_review_completed": false,
+  "official_baseline_eligible": false,
+  "run_id": "4f7288ce-68a5-48dc-8ec4-e62f54775dad",
+  "created_at": "2026-09-23T14:34:06.247824+00:00",
+  "reviewed_at": "2026-09-23T14:39:17.286077+00:00",
+  "search_scope": "synthetic_search",
+  "dataset_id": "search-recorded-purchase-20260923-v1",
+  "dataset_sha256": "de346b46ae67a2fbea3741c964bfeca11fa2e27d2c7a786cbe0901417f1d8220",
+  "local_artifacts": {
+    "search-quality-20260923-r13-purchase-replay.json": {
+      "file_sha256": "6253d4c9fb483f9078957ffb2c405048cebb9680cab579c2dd1c50717fd33074",
+      "canonical_sha256": "20a23639253a8bcd4a2d9b20af00f7d9c680d189edad6d567b402fe0e6f3d32c"
+    },
+    "search-quality-20260923-r13-purchase-replay-ai-review.json": {
+      "file_sha256": "e8ad6ac33011b866653ffb0b3d309c07fe6c1aff52a8995a537ff9ab5d141129",
+      "canonical_sha256": "d34186f3e55b58a5bc88bcba8bf55e1ac5e14ecbdc60ca5c16e3f99ccd4040ed"
+    },
+    "search-quality-20260923-r13-purchase-replay-ai.json": {
+      "file_sha256": "330cb1ab7b8d8d76d9a48c4dc80787923a4cd4cc71a3eb7c7fde9cb6f408d254",
+      "canonical_sha256": "d105d8171694a22d381ec55d9d5a43ef04536384256713b95b323ce1e391ce5f"
+    }
+  },
+  "recorded_evidence_proof": {
+    "original_run_id": "1f570b65-c09f-403c-b4d2-69d40e0c91dd",
+    "original_case_id": "purchase_recommendation",
+    "selected_sources_identical": true,
+    "selected_sources_canonical_sha256": "794d40b297d5c9d2d620cf04fb4a7161aaa60c01c81af06bc17339e33f695abc"
+  },
+  "configuration": {
+    "local_calculation": false,
+    "model": "mlx-community/Qwen3.8-27B-4bit",
+    "context_window": 32768,
+    "max_tokens": 1024,
+    "thinking": false,
+    "timeout_seconds": 240.0,
+    "max_input_chars": 200000,
+    "repeat": 1,
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5,
+      "repetition_penalty": 1.0,
+      "seed": null
+    },
+    "search": {
+      "agent_enabled": true,
+      "provider": "fixture",
+      "max_attempts": 2,
+      "max_results": 5,
+      "planning_max_tokens": 256,
+      "planning_thinking": false,
+      "planning_sampling": {
+        "temperature": 0.0,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 0.0,
+        "repetition_penalty": 1.0,
+        "seed": null
+      },
+      "max_query_chars": 500,
+      "max_context_chars": 12000,
+      "agent_timeout_seconds": 90.0
+    }
+  },
+  "implementation": {
+    "commit": "80984e0a20e194ee28bbe6fbebb07bbaa1bd194c",
+    "dirty": true,
+    "code_sha256": "f94e8ffefcb26dedc0d38da96009ab572378261a898ca1f7ac7f8945599bee02",
+    "prompt_policy_sha256": "e2c5a9d9bb0b2382ab9f2209f7db5868a70bd2da2ce61f617772dcfe841375b3",
+    "packages": {
+      "mlx-vlm": "0.6.17",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5"
+    },
+    "search_cli_sha256": "7e159d3f59f94e46c5b3b6a7dfba110810ee9aa096800508bea5142d3220a8a3"
+  },
+  "assessment": {
+    "policy": {
+      "version": 1,
+      "minimum_case_score": 0.75,
+      "minimum_overall_score": 0.9,
+      "maximum_overall_regression": 0.02,
+      "maximum_case_regression": 0.25
+    },
+    "scope": "full",
+    "status": "failed",
+    "passed": false,
+    "overall_score": 0.8,
+    "failures": [
+      {
+        "reasons": [
+          "전체 최소 품질 점수를 충족하지 못했습니다."
+        ]
+      }
+    ]
+  },
+  "observations": [
+    "641 확정 출력 토큰에서 stop으로 완성되어 이번 실행에 length 잘림은 없다. 130만원대를 150만원 상한 안으로 올바르게 받아들이며 이전 예산 동등가격 오해는 발생하지 않았다.",
+    "LOQ 15AHP10의 가격·라이젠7 250·8코어16스레드·RTX5060 100W·FHD144Hz·sRGB100%·2.4kg은 출처 4와 일치한다. MSI의 가격 136만9천원·코어5·RTX5060도 출처 2와 일치한다.",
+    "HP 빅터스 16의 예산 내 가격 범위·큰 화면·그래픽은 출처 1에 있다. 그러나 같은 출처의 영상 편집용 일반 RAM·SSD·발열 기준을 HP 제품의 적합성 이유로 묶은 부분은 개별 제품 사양 근거가 부족하다.",
+    "MSI의 GPU 존재는 확인되지만 출처 2는 사진 편집·멀티태스킹 성능이나 디스플레이 적합성을 직접 평가하지 않는다. 답변의 제품별 적합성 이유가 근거보다 넓다.",
+    "마지막 M1/M2·150만원대·4K 작업 및 장기 성능에서 Windows 외장 그래픽 모델이 유리할 수 있다는 조건은 출처 1에 실제 포함되어 있다. 이를 근거 없는 맥북 주장으로 감점하지 않는다. 다만 요청한 후보 추천 뒤 일반 조언·대안이 이어지고 Adobe RGB 등 출처에 없는 설명도 남아 있다.",
+    "기존 정책상 사례 점수 0.8은 개별 최저 0.75를 넘지만 전체 최저 0.9에 미달한다. 따라서 사례 상태는 passed여도 이 단일 평가 보고서의 최종 판정은 failed다."
+  ],
+  "limitations": [
+    "DB·계정 토큰 예산·서비스 단계 수 한도와 후정산 통합은 검증하지 않습니다.",
+    "서비스 _fit의 계정 잔여 예산에 따른 출처 제외·출력 축소는 재현하지 않습니다.",
+    "후속 검색 실패도 평가 실행 실패로 기록합니다. 서비스는 확보한 근거로 답변할 수 있습니다.",
+    "실서비스 동작은 별도의 DB 통합 테스트와 실제 서비스 실행으로 검증해야 합니다.",
+    "full은 단일 구매 재생 fixture 전체를 뜻하며 원본 23사례 전체가 아니다.",
+    "이전 실제 검색 자료를 고정 재생했으므로 새 외부 검색 성공·현재 실제 가격의 독립 검증이 아니다.",
+    "원문 질문·답변·검색어·검색 요약 본문을 공유하지 않고 data/evaluations의 권한 0600 파일에만 보존한다.",
+    "r11 실제 검색과 소스·평가 범위가 달라 성능 동등 비교나 정식 기준선 비교가 아니다. 같은 선택 자료에 대한 근거 해석·완결성 관찰이다."
+  ],
+  "cases": [
+    {
+      "case_id": "purchase_recommendation_replay",
+      "repeat": 1,
+      "status": "passed",
+      "score": 0.8,
+      "criteria": [
+        {
+          "id": "decision",
+          "score": 2,
+          "notes": "사진 편집용 노트북 검색을 고정 응답으로 1회 수행했다. 실제 외부 검색을 새로 요청한 것은 아니다."
+        },
+        {
+          "id": "answer",
+          "score": 1,
+          "notes": "150만원 예산을 상한으로 처리하고 근거에 있는 LOQ·MSI 가격과 사양을 정확히 제시했다. 그러나 HP에 일반 편집 RAM·SSD·발열 기준을 제품별 적합성으로 붙이고 MSI의 사진 작업 적합성도 직접 근거보다 넓게 설명하여 부분 충족이다."
+        },
+        {
+          "id": "query_scope",
+          "score": 2,
+          "notes": "사진 편집용 노트북 150만원이라는 대상·용도·예산을 간결하게 유지했고 개인정보·관계없는 대화는 없다."
+        },
+        {
+          "id": "citations",
+          "score": 1,
+          "notes": "LOQ 수치 [4], MSI 가격·CPU/GPU [2], HP 가격 범위 및 맥북 조건 [1]은 실제 근거와 맞는다. 다만 HP 일반 기준의 제품별 적용과 MSI의 사진 편집·멀티태스킹 적합성은 해당 인용이 직접 뒷받침하지 않아 부분 감점한다."
+        },
+        {
+          "id": "freshness",
+          "score": 2,
+          "notes": "제공된 가격과 자료 범위를 사용하고 HP의 정확한 최종 가격·화면 사양 부재를 명시했다. 조회 시각을 근거로 최신 상태를 단정하거나 오래된 버전·제품을 최신이라고 바꾸지 않았다."
+        }
+      ],
+      "failures": [],
+      "execution": {
+        "status": "completed",
+        "error": null,
+        "counted_input_tokens": 4599,
+        "input_tokens": 4599,
+        "output_tokens": 641,
+        "reported_input_tokens": 4599,
+        "reported_output_tokens": 641,
+        "usage_status": "confirmed",
+        "received_output_tokens": 640,
+        "finish_reason": "stop",
+        "elapsed_seconds": 147.022191,
+        "first_token_seconds": 62.517979
+      },
+      "total_elapsed_seconds": 216.954939,
+      "total_confirmed_usage": {
+        "input_tokens": 8897,
+        "output_tokens": 727,
+        "complete": true
+      },
+      "search": {
+        "status": "finished",
+        "elapsed_seconds": 69.932061,
+        "confirmed_input_tokens": 4298,
+        "confirmed_output_tokens": 86,
+        "usage_complete": true
+      },
+      "search_count": 1,
+      "external_search_count": 0,
+      "planner_steps": [
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "web_search",
+          "reason": null,
+          "counted_input_tokens": 1039,
+          "input_tokens": 1039,
+          "output_tokens": 58,
+          "received_output_tokens": 57,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 22.049954
+        },
+        {
+          "status": "completed",
+          "error": null,
+          "tool": "finish_search",
+          "reason": "sufficient",
+          "counted_input_tokens": 3259,
+          "input_tokens": 3259,
+          "output_tokens": 28,
+          "received_output_tokens": 27,
+          "finish_reason": "tool_calls",
+          "elapsed_seconds": 47.88187
+        }
+      ],
+      "source_urls": [
+        {
+          "id": 1,
+          "url": "https://tilnote.io/pages/69acd7b369ab6ff5e73705af",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 2,
+          "url": "https://prod.danawa.com/list?cate=11252750",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 3,
+          "url": "https://sioni.tistory.com/46",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 4,
+          "url": "https://m.blog.naver.com/choicemon/224243566983?targetKeyword=%EB%85%B8%ED%8A%B8%EB%B6%81%EC%B6%94%EC%B2%9C",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        },
+        {
+          "id": 5,
+          "url": "https://quasarzone.com/bbs/qf_nb/views/26677",
+          "retrieved_at": "2026-09-23T14:23:49.031321+00:00"
+        }
+      ],
+      "input_sha256": "bf9390eedb36d0e54438d33b1e420ae9e10de93c4a8ed82a1535693ac1bc417c",
+      "answer_sha256": "aee4162673aafb18d48ed10c351ce8d812f0c7d96be085a2ac31d09660c135fe"
+    }
+  ]
+}

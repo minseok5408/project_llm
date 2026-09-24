@@ -131,11 +131,78 @@ async def test_count_and_generation_use_the_same_normalized_prompt(mlx, thinking
     assert stream_payload["stream_options"] == {"include_usage": True}
     assert stream_payload["logprobs"] is True
     assert stream_payload["top_logprobs"] == 0
+    assert stream_payload["temperature"] == (1.0 if thinking else 0.7)
+    assert stream_payload["presence_penalty"] == (0.0 if thinking else 1.5)
+    assert "tools" not in count_payload
+    assert "tools" not in stream_payload
+    assert "tool_choice" not in stream_payload
     assert messages[3].role == "system"
     assert deltas == [
         ProviderDelta(text="정답"),
         ProviderDelta(input_tokens=91, output_tokens=13, final=True),
     ]
+
+
+@pytest.mark.parametrize("thinking", [False, True])
+async def test_tool_sampling_keeps_count_and_stream_prompt_identical(mlx, thinking: bool) -> None:
+    """도구 sampling만 바꾸고 토큰 계산과 생성의 메시지·도구 템플릿은 동일하게 유지한다."""
+    requests = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append((request.url.path, json.loads(request.content)))
+        if request.url.path.endswith("responses/input_tokens"):
+            return httpx.Response(200, json={"input_tokens": 91})
+        return httpx.Response(200, content=text_event("응답") + usage_event(91, 13))
+
+    provider = mlx(handle)
+    messages = [
+        ChatMessage(role="system", content="도구 호출 판단 안내"),
+        ChatMessage(role="user", content="이전 사용자 발언"),
+        ChatMessage(role="assistant", content="이전 응답"),
+        ChatMessage(role="system", content="추가 판단 안내"),
+        ChatMessage(role="user", content="현재 공개 질문"),
+    ]
+    original_messages = [message.model_dump() for message in messages]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "finish_search",
+                "description": "검색 판단을 마친다.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"reason": {"type": "string"}},
+                    "required": ["reason"],
+                },
+            },
+        }
+    ]
+    options = GenerationOptions(thinking=thinking, max_tokens=32)
+    assert await provider.count_tools(messages, options, tools) == 91
+    deltas = [delta async for delta in provider.stream_tools(messages, options, tools)]
+
+    count_path, count_payload = requests[0]
+    stream_path, stream_payload = requests[1]
+    assert count_path == "/v1/responses/input_tokens"
+    assert stream_path == "/v1/chat/completions"
+    assert count_payload["input"] == stream_payload["messages"]
+    assert count_payload["tools"] == stream_payload["tools"] == tools
+    assert count_payload["enable_thinking"] is stream_payload["enable_thinking"] is thinking
+    assert count_payload["max_output_tokens"] == stream_payload["max_tokens"] == 32
+    assert stream_payload["temperature"] == 0.0
+    assert stream_payload["presence_penalty"] == 0.0
+    assert "temperature" not in count_payload
+    assert "presence_penalty" not in count_payload
+    # 강제 호출 문구가 생성 경로에만 삽입되지 않도록 auto를 유지한다.
+    assert stream_payload["tool_choice"] == "auto"
+    assert stream_payload["parallel_tool_calls"] is False
+    assert "tool_choice" not in count_payload
+    assert stream_payload["messages"][0] == {
+        "role": "system",
+        "content": "도구 호출 판단 안내\n\n추가 판단 안내",
+    }
+    assert [message.model_dump() for message in messages] == original_messages
+    assert deltas[-1] == ProviderDelta(input_tokens=91, output_tokens=13, final=True)
 
 
 @pytest.mark.parametrize("value", [None, True, -1, 0, 1.5, "23", 2**63])
